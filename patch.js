@@ -187,6 +187,36 @@
     mapHint.textContent = '🎯 Đã chọn vị trí chính xác. Bấm Lưu địa điểm để hoàn tất.';
   }
 
+  // When opening the add form from the + button, do NOT prefill the user's current location.
+  // A place must get coordinates only from: explicit map click, address result, picker, or manual lat/lng.
+  function openAddDialogSafe() {
+    const nameInput = document.getElementById('nameInput');
+    const noteInput = document.getElementById('noteInput');
+    const categoryInput = document.getElementById('categoryInput');
+    const wantInput = document.getElementById('wantInput');
+    error.textContent = '';
+    clearResults();
+    nameInput.value = '';
+    addressInput.value = '';
+    noteInput.value = '';
+    latInput.value = '';
+    lngInput.value = '';
+    selectedLocation.textContent = 'Chưa chọn vị trí chính xác';
+    wantInput.checked = false;
+    categoryInput.value = 'food';
+    dialog.showModal();
+    setTimeout(() => nameInput.focus(), 50);
+  }
+
+  // Capture phase runs before app.js's old + button handler.
+  document.addEventListener('click', e => {
+    if (e.target.closest('#addBtn')) {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      openAddDialogSafe();
+    }
+  }, true);
+
   // Capture phase runs before the old handlers in app.js, so these handlers replace them cleanly.
   document.addEventListener('click', e => {
     if (e.target.closest('#searchAddressBtn')) { e.preventDefault(); e.stopImmediatePropagation(); searchAddressNew(); }
