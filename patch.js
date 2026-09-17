@@ -3,6 +3,7 @@
   const searchBtn = document.getElementById('searchAddressBtn');
   const resultsBox = document.getElementById('addressResults');
   const dialog = document.getElementById('placeDialog');
+  const coordInput = document.getElementById('coordInput');
   const latInput = document.getElementById('latInput');
   const lngInput = document.getElementById('lngInput');
   const selectedLocation = document.getElementById('selectedLocation');
@@ -13,6 +14,8 @@
   const categoryInput = document.getElementById('categoryInput');
   const wantInput = document.getElementById('wantInput');
   const radiusSelect = document.getElementById('radiusSelect');
+  const pickerOverlay = document.getElementById('pickerOverlay');
+  const pickerCoords = document.getElementById('pickerCoords');
 
   let sessionToken = null;
   let pickerMap = null;
@@ -20,16 +23,46 @@
   let pickerPosition = null;
 
   const validCoord = (lat, lng) => Number.isFinite(lat) && Number.isFinite(lng) && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180;
-  const readCoordInputs = () => {
+
+  // Google Maps copy format: "Vĩ độ, Kinh độ"
+  // Example: 10.800829838769747, 106.68482208597538
+  function parseCoordText(text) {
+    const value = String(text || '').trim().replace(/[\u00a0\s]+/g, ' ');
+    if (!value) return null;
+    const match = value.match(/^\s*([+-]?(?:\d+(?:\.\d*)?|\.\d+))\s*,\s*([+-]?(?:\d+(?:\.\d*)?|\.\d+))\s*$/);
+    if (!match) return null;
+    const lat = Number(match[1]);
+    const lng = Number(match[2]);
+    return validCoord(lat, lng) ? { lat, lng } : null;
+  }
+
+  function syncCoordFields(lat, lng) {
+    if (!validCoord(lat, lng)) return false;
+    latInput.value = String(lat);
+    lngInput.value = String(lng);
+    coordInput.value = `${String(lat)}, ${String(lng)}`;
+    selectedLocation.textContent = `📍 Đã chọn: ${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+    return true;
+  }
+
+  function readCoordInputs() {
+    // The visible field is the source of truth.
+    const combined = parseCoordText(coordInput.value);
+    if (combined) {
+      syncCoordFields(combined.lat, combined.lng);
+      return combined;
+    }
+
+    // Backward compatibility with old saved/form state.
     const latText = latInput.value.trim();
     const lngText = lngInput.value.trim();
     if (!latText || !lngText) return null;
     const lat = Number(latText), lng = Number(lngText);
     return validCoord(lat, lng) ? { lat, lng } : null;
-  };
+  }
+
   const token = () => window.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`;
 
-  // If the previous save was outside the active radius, show all places once after reload.
   if (sessionStorage.getItem('my-place-map-show-all') === '1') {
     sessionStorage.removeItem('my-place-map-show-all');
     radiusSelect.value = '999';
@@ -93,7 +126,7 @@
       }
 
       if (!data.predictions?.length) {
-        resultsBox.innerHTML = '<div class="address-no-result">Không tìm thấy địa chỉ này. Nếu m có vĩ độ/kinh độ thì nhập trực tiếp ở 2 ô bên dưới để lưu chính xác.</div>';
+        resultsBox.innerHTML = '<div class="address-no-result">Không tìm thấy địa chỉ này. Nếu m có tọa độ Google Maps thì dán vào ô “Vĩ độ, Kinh độ” bên dưới để chọn chính xác.</div>';
         return;
       }
 
@@ -108,23 +141,19 @@
               const lat = Number(place.lat), lng = Number(place.lng);
               if (!validCoord(lat, lng)) throw new Error('Invalid coordinates');
               addressInput.value = place.address || p.text || '';
-              latInput.value = lat.toFixed(6);
-              lngInput.value = lng.toFixed(6);
-              selectedLocation.textContent = `📍 Đã chọn: ${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+              syncCoordFields(lat, lng);
               window.__myPlaceMapSetView?.(lat, lng);
               mapHint.textContent = '📍 Đã chọn địa chỉ. Tọa độ lấy từ GoGoDuk.';
               clearResults();
             } catch (_) {
               selectedLocation.textContent = 'Chưa chọn vị trí chính xác';
-              error.textContent = 'Không lấy được tọa độ. M có thể nhập vĩ độ/kinh độ trực tiếp hoặc chọn trên bản đồ.';
+              error.textContent = 'Không lấy được tọa độ. M có thể dán tọa độ Google Maps vào ô “Vĩ độ, Kinh độ” hoặc chọn trên bản đồ.';
             }
           } else {
             const lat = Number(p.lat), lng = Number(p.lng);
             if (!validCoord(lat, lng)) return;
             addressInput.value = p.text || '';
-            latInput.value = lat.toFixed(6);
-            lngInput.value = lng.toFixed(6);
-            selectedLocation.textContent = `📍 Đã chọn: ${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+            syncCoordFields(lat, lng);
             window.__myPlaceMapSetView?.(lat, lng);
             mapHint.textContent = '📍 Kết quả từ OpenStreetMap; có thể chưa đúng số nhà.';
             clearResults();
@@ -132,7 +161,7 @@
         });
       });
     } catch (_) {
-      error.textContent = 'Không thể tìm địa chỉ lúc này. M vẫn có thể nhập vĩ độ/kinh độ trực tiếp.';
+      error.textContent = 'Không thể tìm địa chỉ lúc này. M vẫn có thể dán tọa độ Google Maps vào ô “Vĩ độ, Kinh độ”.';
     } finally {
       searchBtn.disabled = false;
       searchBtn.textContent = '🔎 Tìm địa chỉ';
@@ -140,6 +169,7 @@
   }
 
   function setPickerPosition(lat, lng) {
+    if (!validCoord(lat, lng)) return;
     pickerPosition = { lat, lng };
     if (pickerMarker) pickerMarker.setLatLng([lat, lng]);
     else {
@@ -155,7 +185,7 @@
   function openPickerNew() {
     error.textContent = '';
     dialog.close();
-    document.getElementById('pickerOverlay').hidden = false;
+    pickerOverlay.hidden = false;
 
     const explicit = readCoordInputs();
     const mainCenter = window.__myPlaceMapMain?.getCenter?.();
@@ -174,7 +204,7 @@
   }
 
   function reopenDialog() {
-    document.getElementById('pickerOverlay').hidden = true;
+    pickerOverlay.hidden = true;
     if (!dialog.open) dialog.showModal();
   }
 
@@ -184,9 +214,8 @@
       return;
     }
     const { lat, lng } = pickerPosition;
-    latInput.value = lat.toFixed(6);
-    lngInput.value = lng.toFixed(6);
-    selectedLocation.textContent = `📍 Đã chọn chính xác: ${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+    // Keep the full coordinate in the input instead of rounding it to 6 decimals.
+    syncCoordFields(lat, lng);
     try {
       const data = await api('/api/address-reverse', { lat, lng });
       if (data.address) addressInput.value = data.address;
@@ -207,6 +236,7 @@
     nameInput.value = '';
     addressInput.value = '';
     noteInput.value = '';
+    coordInput.value = '';
     latInput.value = '';
     lngInput.value = '';
     selectedLocation.textContent = 'Chưa chọn vị trí chính xác';
@@ -231,6 +261,15 @@
     else if (e.target.closest('#confirmPickerBtn')) { e.preventDefault(); e.stopImmediatePropagation(); confirmPickerNew(); }
   }, true);
 
+  // While typing/pasting, validate and immediately mirror the combined value into the legacy hidden fields.
+  coordInput.addEventListener('input', () => {
+    const parsed = parseCoordText(coordInput.value);
+    if (parsed) {
+      syncCoordFields(parsed.lat, parsed.lng);
+      error.textContent = '';
+    }
+  });
+
   document.addEventListener('submit', e => {
     if (e.target?.id !== 'placeForm') return;
     e.preventDefault();
@@ -239,12 +278,12 @@
     const name = nameInput.value.trim();
     const coords = readCoordInputs();
     if (!name) { error.textContent = 'Hãy nhập tên địa điểm.'; return; }
-    if (!coords) { error.textContent = 'Hãy nhập đầy đủ Vĩ độ và Kinh độ, hoặc chọn vị trí trên bản đồ.'; return; }
+    if (!coords) { error.textContent = 'Hãy dán tọa độ theo dạng: Vĩ độ, Kinh độ (ví dụ 10.800829838769747, 106.68482208597538).'; return; }
 
     let places = [];
     try { places = JSON.parse(localStorage.getItem('my-place-map-places-v2') || '[]'); } catch (_) { places = []; }
     places.push({
-      id: crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`,
+      id: window.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`,
       name,
       address: addressInput.value.trim(),
       category: categoryInput.value,
