@@ -16,6 +16,7 @@
   const radiusSelect = document.getElementById('radiusSelect');
   const pickerOverlay = document.getElementById('pickerOverlay');
   const pickerCoords = document.getElementById('pickerCoords');
+  const STORAGE_KEY = 'my-place-map-places-v2';
 
   let sessionToken = null;
   let pickerMap = null;
@@ -24,8 +25,6 @@
 
   const validCoord = (lat, lng) => Number.isFinite(lat) && Number.isFinite(lng) && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180;
 
-  // Google Maps copy format: "Vĩ độ, Kinh độ"
-  // Example: 10.800829838769747, 106.68482208597538
   function parseCoordText(text) {
     const value = String(text || '').trim().replace(/[\u00a0\s]+/g, ' ');
     if (!value) return null;
@@ -46,14 +45,11 @@
   }
 
   function readCoordInputs() {
-    // The visible field is the source of truth.
     const combined = parseCoordText(coordInput.value);
     if (combined) {
       syncCoordFields(combined.lat, combined.lng);
       return combined;
     }
-
-    // Backward compatibility with old saved/form state.
     const latText = latInput.value.trim();
     const lngText = lngInput.value.trim();
     if (!latText || !lngText) return null;
@@ -77,6 +73,57 @@
     if (!res.ok) throw Object.assign(new Error(data.message || data.error || 'API error'), { code: data.error, status: res.status });
     return data;
   }
+
+  async function placeApi(method, path, body) {
+    const res = await fetch(path, {
+      method,
+      headers: {'Content-Type': 'application/json', Accept: 'application/json'},
+      body: body === undefined ? undefined : JSON.stringify(body)
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw Object.assign(new Error(data.message || data.error || 'Places API error'), { code: data.error, status: res.status });
+    return data;
+  }
+
+  function normalizePlace(p) {
+    return {
+      id: String(p.id), name: String(p.name || ''), address: String(p.address || ''),
+      category: String(p.category || 'food'), note: String(p.note || ''),
+      lat: Number(p.lat), lng: Number(p.lng), want: Boolean(p.want),
+      createdAt: Number(p.createdAt ?? p.created_at ?? Date.now())
+    };
+  }
+
+  async function syncRemotePlaces() {
+    try {
+      const data = await api('/api/places');
+      const remote = Array.isArray(data.places) ? data.places.map(normalizePlace) : [];
+      let local = [];
+      try { local = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]').map(normalizePlace); } catch (_) {}
+
+      if (remote.length > 0) {
+        const remoteJson = JSON.stringify(remote);
+        const localJson = JSON.stringify(local);
+        if (remoteJson !== localJson) {
+          localStorage.setItem(STORAGE_KEY, remoteJson);
+          sessionStorage.setItem('my-place-map-show-all', '1');
+          location.reload();
+        }
+        return;
+      }
+
+      // First connection: migrate existing local places into Supabase.
+      if (local.length > 0) {
+        for (const place of local) {
+          try { await placeApi('POST', '/api/places', place); } catch (_) { return; }
+        }
+      }
+    } catch (_) {
+      // Keep localStorage working as a fallback if Supabase is unavailable.
+    }
+  }
+
+  syncRemotePlaces();
 
   async function nominatimSearch(q) {
     const url = new URL('https://nominatim.openstreetmap.org/search');
@@ -186,11 +233,9 @@
     error.textContent = '';
     dialog.close();
     pickerOverlay.hidden = false;
-
     const explicit = readCoordInputs();
     const mainCenter = window.__myPlaceMapMain?.getCenter?.();
     pickerPosition = explicit || (mainCenter ? { lat: mainCenter.lat, lng: mainCenter.lng } : { lat: 10.7769, lng: 106.7009 });
-
     if (!pickerMap) {
       pickerMap = L.map('pickerMap', { zoomControl: true }).setView([pickerPosition.lat, pickerPosition.lng], 17);
       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 20, attribution: '&copy; OpenStreetMap contributors' }).addTo(pickerMap);
@@ -214,7 +259,6 @@
       return;
     }
     const { lat, lng } = pickerPosition;
-    // Keep the full coordinate in the input instead of rounding it to 6 decimals.
     syncCoordFields(lat, lng);
     try {
       const data = await api('/api/address-reverse', { lat, lng });
@@ -230,7 +274,7 @@
     mapHint.textContent = '🎯 Đã chọn vị trí chính xác. Bấm Lưu địa điểm để hoàn tất.';
   }
 
-  function openAddDialogSafe() {
+  function openAddDialogSafe(lat = null, lng = null) {
     error.textContent = '';
     clearResults();
     nameInput.value = '';
@@ -242,14 +286,14 @@
     selectedLocation.textContent = 'Chưa chọn vị trí chính xác';
     wantInput.checked = false;
     categoryInput.value = 'food';
+    if (validCoord(lat, lng)) syncCoordFields(lat, lng);
     dialog.showModal();
     setTimeout(() => nameInput.focus(), 50);
   }
 
   document.addEventListener('click', e => {
     if (e.target.closest('#addBtn')) {
-      e.preventDefault();
-      e.stopImmediatePropagation();
+      e.preventDefault(); e.stopImmediatePropagation();
       openAddDialogSafe();
     }
   }, true);
@@ -261,7 +305,6 @@
     else if (e.target.closest('#confirmPickerBtn')) { e.preventDefault(); e.stopImmediatePropagation(); confirmPickerNew(); }
   }, true);
 
-  // While typing/pasting, validate and immediately mirror the combined value into the legacy hidden fields.
   coordInput.addEventListener('input', () => {
     const parsed = parseCoordText(coordInput.value);
     if (parsed) {
@@ -270,10 +313,9 @@
     }
   });
 
-  document.addEventListener('submit', e => {
+  document.addEventListener('submit', async e => {
     if (e.target?.id !== 'placeForm') return;
-    e.preventDefault();
-    e.stopImmediatePropagation();
+    e.preventDefault(); e.stopImmediatePropagation();
     error.textContent = '';
     const name = nameInput.value.trim();
     const coords = readCoordInputs();
@@ -281,22 +323,46 @@
     if (!coords) { error.textContent = 'Hãy dán tọa độ theo dạng: Vĩ độ, Kinh độ (ví dụ 10.800829838769747, 106.68482208597538).'; return; }
 
     let places = [];
-    try { places = JSON.parse(localStorage.getItem('my-place-map-places-v2') || '[]'); } catch (_) { places = []; }
-    places.push({
+    try { places = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]'); } catch (_) { places = []; }
+    const address = addressInput.value.trim();
+    const duplicate = places.some(p => p.name.trim().toLowerCase() === name.toLowerCase() && Math.abs(Number(p.lat) - coords.lat) < 1e-12 && Math.abs(Number(p.lng) - coords.lng) < 1e-12 && String(p.address || '').trim() === address);
+    if (duplicate) { error.textContent = 'Địa điểm này đã tồn tại.'; return; }
+
+    const place = normalizePlace({
       id: window.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`,
-      name,
-      address: addressInput.value.trim(),
-      category: categoryInput.value,
-      note: noteInput.value.trim(),
-      lat: coords.lat,
-      lng: coords.lng,
-      want: wantInput.checked,
-      createdAt: Date.now()
+      name, address, category: categoryInput.value, note: noteInput.value.trim(),
+      lat: coords.lat, lng: coords.lng, want: wantInput.checked, createdAt: Date.now()
     });
-    localStorage.setItem('my-place-map-places-v2', JSON.stringify(places));
+
+    // Supabase is the primary persistent store. Only close after it succeeds.
+    try {
+      await placeApi('POST', '/api/places', place);
+    } catch (_) {
+      error.textContent = '⚠️ Chưa sao lưu được địa điểm lên máy chủ. Kiểm tra kết nối rồi bấm Lưu lại.';
+      return;
+    }
+
+    places.push(place);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(places));
     sessionStorage.setItem('my-place-map-show-all', '1');
     dialog.close();
     location.reload();
+  }, true);
+
+  document.addEventListener('click', async e => {
+    const deleteBtn = e.target.closest('.delete-place');
+    if (!deleteBtn) return;
+    e.preventDefault(); e.stopImmediatePropagation();
+    const id = deleteBtn.dataset.id;
+    try {
+      await placeApi('DELETE', `/api/places/${encodeURIComponent(id)}`);
+      let places = [];
+      try { places = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]'); } catch (_) {}
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(places.filter(p => String(p.id) !== String(id))));
+      location.reload();
+    } catch (_) {
+      alert('Không thể xóa khỏi bộ nhớ máy chủ. Vui lòng thử lại.');
+    }
   }, true);
 
   document.addEventListener('click', e => {
@@ -304,7 +370,7 @@
     if (!card || e.target.closest('button, a, input, select, textarea')) return;
     const id = card.id?.replace(/^place-/, '');
     let places = [];
-    try { places = JSON.parse(localStorage.getItem('my-place-map-places-v2') || '[]'); } catch (_) {}
+    try { places = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]'); } catch (_) {}
     const place = places.find(p => p.id === id);
     if (place && window.__myPlaceMapMain) window.__myPlaceMapMain.setView([place.lat, place.lng], Math.max(window.__myPlaceMapMain.getZoom(), 16), { animate: true });
   });
