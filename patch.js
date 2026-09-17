@@ -187,8 +187,6 @@
     mapHint.textContent = '🎯 Đã chọn vị trí chính xác. Bấm Lưu địa điểm để hoàn tất.';
   }
 
-  // When opening the add form from the + button, do NOT prefill the user's current location.
-  // A place must get coordinates only from: explicit map click, address result, picker, or manual lat/lng.
   function openAddDialogSafe() {
     const nameInput = document.getElementById('nameInput');
     const noteInput = document.getElementById('noteInput');
@@ -208,7 +206,6 @@
     setTimeout(() => nameInput.focus(), 50);
   }
 
-  // Capture phase runs before app.js's old + button handler.
   document.addEventListener('click', e => {
     if (e.target.closest('#addBtn')) {
       e.preventDefault();
@@ -217,13 +214,24 @@
     }
   }, true);
 
-  // Capture phase runs before the old handlers in app.js, so these handlers replace them cleanly.
   document.addEventListener('click', e => {
     if (e.target.closest('#searchAddressBtn')) { e.preventDefault(); e.stopImmediatePropagation(); searchAddressNew(); }
     else if (e.target.closest('#pickLocationBtn')) { e.preventDefault(); e.stopImmediatePropagation(); openPickerNew(); }
     else if (e.target.closest('#closePickerBtn')) { e.preventDefault(); e.stopImmediatePropagation(); reopenDialog(); }
     else if (e.target.closest('#confirmPickerBtn')) { e.preventDefault(); e.stopImmediatePropagation(); confirmPickerNew(); }
   }, true);
+
+  // Clicking a saved place card/title centers the main map on that place.
+  document.addEventListener('click', e => {
+    const card = e.target.closest('.place-card');
+    if (!card || e.target.closest('button, a, input, select, textarea')) return;
+    const id = card.id?.replace(/^place-/, '');
+    const place = Array.isArray(window.places) ? window.places.find(p => p.id === id) : null;
+    if (place && window.__myPlaceMapMain) {
+      window.__myPlaceMapMain.setView([place.lat, place.lng], Math.max(window.__myPlaceMapMain.getZoom(), 16), { animate: true });
+      if (window.placeMarkers?.get(place.id)) window.placeMarkers.get(place.id).openPopup();
+    }
+  });
 
   document.addEventListener('keydown', e => {
     if (e.key === 'Enter' && e.target === addressInput) { e.preventDefault(); e.stopImmediatePropagation(); searchAddressNew(); }
