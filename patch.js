@@ -19,7 +19,6 @@
   let pickerMarker = null;
   let pickerPosition = null;
 
-  // Empty inputs must NOT become 0,0. This was the cause of the picker opening at the Gulf of Guinea.
   const validCoord = (lat, lng) => Number.isFinite(lat) && Number.isFinite(lng) && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180;
   const readCoordInputs = () => {
     const latText = latInput.value.trim();
@@ -29,6 +28,13 @@
     return validCoord(lat, lng) ? { lat, lng } : null;
   };
   const token = () => window.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`;
+
+  // If the previous save was outside the active radius, show all places once after reload.
+  if (sessionStorage.getItem('my-place-map-show-all') === '1') {
+    sessionStorage.removeItem('my-place-map-show-all');
+    radiusSelect.value = '999';
+    radiusSelect.dispatchEvent(new Event('change'));
+  }
 
   async function api(path, params = {}) {
     const url = new URL(path, location.origin);
@@ -82,7 +88,6 @@
       try {
         data = await api('/api/address-search', { q, sessionToken });
       } catch (_) {
-        // GoGoDuk can fail because of key/quota/upstream issues; always try OSM as a fallback.
         const results = await nominatimSearch(q);
         data = { source: 'nominatim', predictions: results.map(r => ({ text: r.display_name, mainText: r.display_name, secondaryText: '', lat: Number(r.lat), lng: Number(r.lon) })) };
       }
@@ -152,8 +157,6 @@
     dialog.close();
     document.getElementById('pickerOverlay').hidden = false;
 
-    // Only use explicit coordinates. If none exist, use the current MAIN map center,
-    // never Number('') => 0,0 and never the user's GPS position automatically.
     const explicit = readCoordInputs();
     const mainCenter = window.__myPlaceMapMain?.getCenter?.();
     pickerPosition = explicit || (mainCenter ? { lat: mainCenter.lat, lng: mainCenter.lng } : { lat: 10.7769, lng: 106.7009 });
@@ -213,7 +216,6 @@
     setTimeout(() => nameInput.focus(), 50);
   }
 
-  // Own the + button so the old app.js handler cannot reinsert current GPS coordinates.
   document.addEventListener('click', e => {
     if (e.target.closest('#addBtn')) {
       e.preventDefault();
@@ -222,7 +224,6 @@
     }
   }, true);
 
-  // Address search + picker handlers run before app.js handlers.
   document.addEventListener('click', e => {
     if (e.target.closest('#searchAddressBtn')) { e.preventDefault(); e.stopImmediatePropagation(); searchAddressNew(); }
     else if (e.target.closest('#pickLocationBtn')) { e.preventDefault(); e.stopImmediatePropagation(); openPickerNew(); }
@@ -230,22 +231,18 @@
     else if (e.target.closest('#confirmPickerBtn')) { e.preventDefault(); e.stopImmediatePropagation(); confirmPickerNew(); }
   }, true);
 
-  // Manual lat/lng must be a first-class save path. This capture handler prevents the old
-  // submit handler from ever replacing the entered coordinates with current location.
   document.addEventListener('submit', e => {
     if (e.target?.id !== 'placeForm') return;
     e.preventDefault();
     e.stopImmediatePropagation();
-
     error.textContent = '';
     const name = nameInput.value.trim();
     const coords = readCoordInputs();
     if (!name) { error.textContent = 'Hãy nhập tên địa điểm.'; return; }
     if (!coords) { error.textContent = 'Hãy nhập đầy đủ Vĩ độ và Kinh độ, hoặc chọn vị trí trên bản đồ.'; return; }
 
-    const raw = localStorage.getItem('my-place-map-places-v2');
     let places = [];
-    try { places = raw ? JSON.parse(raw) : []; } catch (_) { places = []; }
+    try { places = JSON.parse(localStorage.getItem('my-place-map-places-v2') || '[]'); } catch (_) { places = []; }
     places.push({
       id: crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`,
       name,
@@ -258,15 +255,11 @@
       createdAt: Date.now()
     });
     localStorage.setItem('my-place-map-places-v2', JSON.stringify(places));
-
-    // Make the newly saved place visible even if it is outside the current 3 km filter.
-    radiusSelect.value = '999';
+    sessionStorage.setItem('my-place-map-show-all', '1');
     dialog.close();
-    window.__myPlaceMapMain?.setView([coords.lat, coords.lng], 17, { animate: true });
     location.reload();
   }, true);
 
-  // Clicking the body of a saved card (not its buttons) centers the map on that place.
   document.addEventListener('click', e => {
     const card = e.target.closest('.place-card');
     if (!card || e.target.closest('button, a, input, select, textarea')) return;
@@ -274,9 +267,7 @@
     let places = [];
     try { places = JSON.parse(localStorage.getItem('my-place-map-places-v2') || '[]'); } catch (_) {}
     const place = places.find(p => p.id === id);
-    if (place && window.__myPlaceMapMain) {
-      window.__myPlaceMapMain.setView([place.lat, place.lng], Math.max(window.__myPlaceMapMain.getZoom(), 16), { animate: true });
-    }
+    if (place && window.__myPlaceMapMain) window.__myPlaceMapMain.setView([place.lat, place.lng], Math.max(window.__myPlaceMapMain.getZoom(), 16), { animate: true });
   });
 
   document.addEventListener('keydown', e => {
