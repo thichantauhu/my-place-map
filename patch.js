@@ -3,24 +3,31 @@
   const searchBtn = document.getElementById('searchAddressBtn');
   const resultsBox = document.getElementById('addressResults');
   const dialog = document.getElementById('placeDialog');
-  const pickBtn = document.getElementById('pickLocationBtn');
-  const pickerOverlay = document.getElementById('pickerOverlay');
-  const pickerMapEl = document.getElementById('pickerMap');
-  const pickerCoords = document.getElementById('pickerCoords');
-  const confirmBtn = document.getElementById('confirmPickerBtn');
-  const closePickerBtn = document.getElementById('closePickerBtn');
   const latInput = document.getElementById('latInput');
   const lngInput = document.getElementById('lngInput');
   const selectedLocation = document.getElementById('selectedLocation');
   const error = document.getElementById('formError');
   const mapHint = document.getElementById('mapHint');
+  const nameInput = document.getElementById('nameInput');
+  const noteInput = document.getElementById('noteInput');
+  const categoryInput = document.getElementById('categoryInput');
+  const wantInput = document.getElementById('wantInput');
+  const radiusSelect = document.getElementById('radiusSelect');
 
   let sessionToken = null;
   let pickerMap = null;
   let pickerMarker = null;
   let pickerPosition = null;
 
+  // Empty inputs must NOT become 0,0. This was the cause of the picker opening at the Gulf of Guinea.
   const validCoord = (lat, lng) => Number.isFinite(lat) && Number.isFinite(lng) && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180;
+  const readCoordInputs = () => {
+    const latText = latInput.value.trim();
+    const lngText = lngInput.value.trim();
+    if (!latText || !lngText) return null;
+    const lat = Number(latText), lng = Number(lngText);
+    return validCoord(lat, lng) ? { lat, lng } : null;
+  };
   const token = () => window.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`;
 
   async function api(path, params = {}) {
@@ -74,17 +81,14 @@
       let data;
       try {
         data = await api('/api/address-search', { q, sessionToken });
-      } catch (e) {
-        if (e.code === 'GOGODUK_API_KEY_NOT_CONFIGURED') {
-          resultsBox.innerHTML = '<div class="address-no-result">⚠️ Chưa cấu hình GoGoDuk. M thêm API key miễn phí vào Render để dùng tìm địa chỉ Việt Nam chính xác hơn.</div>';
-          return;
-        }
+      } catch (_) {
+        // GoGoDuk can fail because of key/quota/upstream issues; always try OSM as a fallback.
         const results = await nominatimSearch(q);
         data = { source: 'nominatim', predictions: results.map(r => ({ text: r.display_name, mainText: r.display_name, secondaryText: '', lat: Number(r.lat), lng: Number(r.lon) })) };
       }
 
       if (!data.predictions?.length) {
-        resultsBox.innerHTML = '<div class="address-no-result">Không tìm thấy địa chỉ. Thử nhập thêm tên đường, phường hoặc thành phố.</div>';
+        resultsBox.innerHTML = '<div class="address-no-result">Không tìm thấy địa chỉ này. Nếu m có vĩ độ/kinh độ thì nhập trực tiếp ở 2 ô bên dưới để lưu chính xác.</div>';
         return;
       }
 
@@ -95,7 +99,7 @@
             selectedLocation.textContent = '⌛ Đang lấy tọa độ chính xác...';
             try {
               const resolved = await api('/api/address-resolve', { id: p.placeId, sessionToken });
-              const place = resolved.place;
+              const place = resolved.place || {};
               const lat = Number(place.lat), lng = Number(place.lng);
               if (!validCoord(lat, lng)) throw new Error('Invalid coordinates');
               addressInput.value = place.address || p.text || '';
@@ -107,7 +111,7 @@
               clearResults();
             } catch (_) {
               selectedLocation.textContent = 'Chưa chọn vị trí chính xác';
-              error.textContent = 'Không lấy được tọa độ địa chỉ này. Thử lại hoặc chọn chính xác trên bản đồ.';
+              error.textContent = 'Không lấy được tọa độ. M có thể nhập vĩ độ/kinh độ trực tiếp hoặc chọn trên bản đồ.';
             }
           } else {
             const lat = Number(p.lat), lng = Number(p.lng);
@@ -123,7 +127,7 @@
         });
       });
     } catch (_) {
-      error.textContent = 'Không thể tìm địa chỉ lúc này. Thử lại sau.';
+      error.textContent = 'Không thể tìm địa chỉ lúc này. M vẫn có thể nhập vĩ độ/kinh độ trực tiếp.';
     } finally {
       searchBtn.disabled = false;
       searchBtn.textContent = '🔎 Tìm địa chỉ';
@@ -146,29 +150,36 @@
   function openPickerNew() {
     error.textContent = '';
     dialog.close();
-    pickerOverlay.hidden = false;
-    const lat = Number(latInput.value), lng = Number(lngInput.value);
-    pickerPosition = validCoord(lat, lng) ? { lat, lng } : null;
+    document.getElementById('pickerOverlay').hidden = false;
+
+    // Only use explicit coordinates. If none exist, use the current MAIN map center,
+    // never Number('') => 0,0 and never the user's GPS position automatically.
+    const explicit = readCoordInputs();
+    const mainCenter = window.__myPlaceMapMain?.getCenter?.();
+    pickerPosition = explicit || (mainCenter ? { lat: mainCenter.lat, lng: mainCenter.lng } : { lat: 10.7769, lng: 106.7009 });
 
     if (!pickerMap) {
-      pickerMap = L.map('pickerMap', { zoomControl: true }).setView(pickerPosition ? [pickerPosition.lat, pickerPosition.lng] : [10.7769, 106.7009], pickerPosition ? 18 : 13);
+      pickerMap = L.map('pickerMap', { zoomControl: true }).setView([pickerPosition.lat, pickerPosition.lng], 17);
       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 20, attribution: '&copy; OpenStreetMap contributors' }).addTo(pickerMap);
       pickerMap.on('click', e => setPickerPosition(e.latlng.lat, e.latlng.lng));
     }
     setTimeout(() => {
       pickerMap.invalidateSize();
-      if (pickerPosition) { pickerMap.setView([pickerPosition.lat, pickerPosition.lng], 18); setPickerPosition(pickerPosition.lat, pickerPosition.lng); }
-    }, 80);
-    pickerCoords.textContent = pickerPosition ? `📍 ${pickerPosition.lat.toFixed(6)}, ${pickerPosition.lng.toFixed(6)}` : 'Bấm vào bản đồ để chọn vị trí';
+      pickerMap.setView([pickerPosition.lat, pickerPosition.lng], 18);
+      setPickerPosition(pickerPosition.lat, pickerPosition.lng);
+    }, 120);
   }
 
   function reopenDialog() {
-    pickerOverlay.hidden = true;
+    document.getElementById('pickerOverlay').hidden = true;
     if (!dialog.open) dialog.showModal();
   }
 
   async function confirmPickerNew() {
-    if (!pickerPosition) { pickerCoords.textContent = '⚠️ Hãy bấm lên bản đồ để chọn vị trí.'; return; }
+    if (!pickerPosition || !validCoord(pickerPosition.lat, pickerPosition.lng)) {
+      pickerCoords.textContent = '⚠️ Hãy bấm lên bản đồ để chọn vị trí.';
+      return;
+    }
     const { lat, lng } = pickerPosition;
     latInput.value = lat.toFixed(6);
     lngInput.value = lng.toFixed(6);
@@ -188,10 +199,6 @@
   }
 
   function openAddDialogSafe() {
-    const nameInput = document.getElementById('nameInput');
-    const noteInput = document.getElementById('noteInput');
-    const categoryInput = document.getElementById('categoryInput');
-    const wantInput = document.getElementById('wantInput');
     error.textContent = '';
     clearResults();
     nameInput.value = '';
@@ -206,6 +213,7 @@
     setTimeout(() => nameInput.focus(), 50);
   }
 
+  // Own the + button so the old app.js handler cannot reinsert current GPS coordinates.
   document.addEventListener('click', e => {
     if (e.target.closest('#addBtn')) {
       e.preventDefault();
@@ -214,6 +222,7 @@
     }
   }, true);
 
+  // Address search + picker handlers run before app.js handlers.
   document.addEventListener('click', e => {
     if (e.target.closest('#searchAddressBtn')) { e.preventDefault(); e.stopImmediatePropagation(); searchAddressNew(); }
     else if (e.target.closest('#pickLocationBtn')) { e.preventDefault(); e.stopImmediatePropagation(); openPickerNew(); }
@@ -221,15 +230,52 @@
     else if (e.target.closest('#confirmPickerBtn')) { e.preventDefault(); e.stopImmediatePropagation(); confirmPickerNew(); }
   }, true);
 
-  // Clicking a saved place card/title centers the main map on that place.
+  // Manual lat/lng must be a first-class save path. This capture handler prevents the old
+  // submit handler from ever replacing the entered coordinates with current location.
+  document.addEventListener('submit', e => {
+    if (e.target?.id !== 'placeForm') return;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+
+    error.textContent = '';
+    const name = nameInput.value.trim();
+    const coords = readCoordInputs();
+    if (!name) { error.textContent = 'Hãy nhập tên địa điểm.'; return; }
+    if (!coords) { error.textContent = 'Hãy nhập đầy đủ Vĩ độ và Kinh độ, hoặc chọn vị trí trên bản đồ.'; return; }
+
+    const raw = localStorage.getItem('my-place-map-places-v2');
+    let places = [];
+    try { places = raw ? JSON.parse(raw) : []; } catch (_) { places = []; }
+    places.push({
+      id: crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`,
+      name,
+      address: addressInput.value.trim(),
+      category: categoryInput.value,
+      note: noteInput.value.trim(),
+      lat: coords.lat,
+      lng: coords.lng,
+      want: wantInput.checked,
+      createdAt: Date.now()
+    });
+    localStorage.setItem('my-place-map-places-v2', JSON.stringify(places));
+
+    // Make the newly saved place visible even if it is outside the current 3 km filter.
+    radiusSelect.value = '999';
+    dialog.close();
+    window.__myPlaceMapMain?.setView([coords.lat, coords.lng], 17, { animate: true });
+    location.reload();
+  }, true);
+
+  // Clicking the body of a saved card (not its buttons) centers the map on that place.
   document.addEventListener('click', e => {
     const card = e.target.closest('.place-card');
     if (!card || e.target.closest('button, a, input, select, textarea')) return;
     const id = card.id?.replace(/^place-/, '');
-    const place = Array.isArray(window.places) ? window.places.find(p => p.id === id) : null;
+    let places = [];
+    try { places = JSON.parse(localStorage.getItem('my-place-map-places-v2') || '[]'); } catch (_) {}
+    const place = places.find(p => p.id === id);
     if (place && window.__myPlaceMapMain) {
       window.__myPlaceMapMain.setView([place.lat, place.lng], Math.max(window.__myPlaceMapMain.getZoom(), 16), { animate: true });
-      if (window.placeMarkers?.get(place.id)) window.placeMarkers.get(place.id).openPopup();
     }
   });
 
