@@ -1,57 +1,11 @@
 <!doctype html>
 <html lang="vi">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>My Place Map</title>
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="style.css" />
-</head>
-<body>
-  <main class="app">
-    <header class="topbar">
-      <div><h1>📍 My Place Map</h1><p>Lưu những nơi muốn ăn, chơi và ghé lại.</p></div>
-      <button id="locateBtn" class="secondary">📍 Vị trí của tôi</button>
-    </header>
-    <section class="controls">
-      <button class="chip active" data-filter="all">Tất cả</button><button class="chip" data-filter="food">🍜 Ăn uống</button>
-      <button class="chip" data-filter="fun">🎮 Vui chơi</button><button class="chip" data-filter="cafe">☕ Cafe</button>
-      <button class="chip" data-filter="want">❤️ Muốn đi</button><button id="addBtn" class="primary">＋ Thêm địa điểm</button>
-    </section>
-    <section class="map-shell"><div id="map" class="map"></div><div id="mapHint" class="map-hint">Đang lấy vị trí của bạn…</div></section>
-    <section class="nearby-head"><div><h2>Địa điểm gần bạn</h2><span id="countText">0 địa điểm</span></div><select id="radiusSelect" aria-label="Khoảng cách"><option value="1">Trong 1 km</option><option value="3" selected>Trong 3 km</option><option value="5">Trong 5 km</option><option value="10">Trong 10 km</option><option value="999">Tất cả</option></select></section>
-    <section id="placeList" class="place-list"></section>
-
-    <dialog id="placeDialog">
-      <form id="placeForm" class="form">
-        <div class="dialog-head"><h3>Thêm địa điểm</h3><button type="button" id="closePlaceBtn" class="icon-btn" aria-label="Đóng">✕</button></div>
-        <p class="form-tip">💡 Nhập địa chỉ để tìm, hoặc dán tọa độ Google Maps theo dạng <b>Vĩ độ, Kinh độ</b>.</p>
-        <label>Tên địa điểm<input id="nameInput" required maxlength="100" placeholder="Ví dụ: Quán bún bò..." /></label>
-        <label>Địa chỉ<div class="address-search"><input id="addressInput" maxlength="250" placeholder="Ví dụ: 450/3 Phan Xích Long, TP.HCM" /><button type="button" id="searchAddressBtn" class="secondary">🔎 Tìm địa chỉ</button></div></label>
-        <div id="addressResults" class="address-results"></div>
-        <button type="button" id="pickLocationBtn" class="pick-location">🎯 Chọn chính xác trên bản đồ</button>
-        <div id="selectedLocation" class="selected-location">Chưa chọn vị trí chính xác</div>
-        <label>Loại<select id="categoryInput"><option value="food">🍜 Ăn uống</option><option value="fun">🎮 Vui chơi</option><option value="cafe">☕ Cafe</option><option value="other">📌 Khác</option></select></label>
-        <label>Ghi chú<textarea id="noteInput" rows="3" maxlength="300" placeholder="Món ngon, giá, giờ mở cửa..."></textarea></label>
-        <label>📍 Tọa độ <span style="font-weight:400;color:#777">(Vĩ độ, Kinh độ)</span><input id="coordInput" type="text" inputmode="decimal" autocomplete="off" placeholder="10.800829838769747, 106.68482208597538" /></label>
-        <input id="latInput" type="hidden" /><input id="lngInput" type="hidden" />
-        <label class="check"><input id="wantInput" type="checkbox" /> ❤️ Muốn đi</label>
-        <div class="form-actions"><button type="button" id="cancelPlaceBtn" class="secondary">Hủy</button><button id="saveBtn" type="submit" class="primary">Lưu địa điểm</button></div>
-        <p id="formError" class="error"></p>
-      </form>
-    </dialog>
-
-    <div id="pickerOverlay" class="picker-overlay" hidden>
-      <div class="picker-panel">
-        <div class="picker-head"><div><h3>🎯 Chọn vị trí chính xác</h3><p>Bấm đúng vào vị trí quán/địa điểm trên bản đồ.</p></div><button type="button" id="closePickerBtn" class="icon-btn">✕</button></div>
-        <div id="pickerMap" class="picker-map"></div>
-        <div class="picker-footer"><span id="pickerCoords">Chưa chọn vị trí</span><button type="button" id="confirmPickerBtn" class="primary">✓ Dùng vị trí này</button></div>
-      </div>
-    </div>
-  </main>
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="prepatch.js"></script>
-  <script src="app.js"></script>
-  <script src="patch.js"></script>
-</body>
-</html>
+<head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /><title>My Place Map</title><link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" /><link rel="stylesheet" href="style.css" /></head>
+<body><main class="app">
+<header class="topbar"><div><h1>📍 My Place Map</h1><p>Lưu những nơi muốn ăn, chơi và ghé lại.</p></div><button id="locateBtn" class="secondary">📍 Vị trí của tôi</button></header>
+<section class="controls"><button class="chip active" data-filter="all">Tất cả</button><button class="chip" data-filter="food">🍜 Ăn uống</button><button class="chip" data-filter="fun">🎮 Vui chơi</button><button class="chip" data-filter="cafe">☕ Cafe</button><button class="chip" data-filter="want">❤️ Muốn đi</button><button id="addBtn" class="primary">＋ Thêm địa điểm</button></section>
+<section class="map-shell"><div id="map" class="map"></div><div id="mapHint" class="map-hint">Đang lấy vị trí của bạn…</div></section>
+<section class="nearby-head"><div><h2>Địa điểm gần bạn</h2><span id="countText">0 địa điểm</span></div><select id="radiusSelect" aria-label="Khoảng cách"><option value="1">Trong 1 km</option><option value="3" selected>Trong 3 km</option><option value="5">Trong 5 km</option><option value="10">Trong 10 km</option><option value="999">Tất cả</option></select></section><section id="placeList" class="place-list"></section>
+<dialog id="placeDialog"><form id="placeForm" class="form"><div class="dialog-head"><h3>Thêm địa điểm</h3><button type="button" id="closePlaceBtn" class="icon-btn">✕</button></div><p class="form-tip">💡 Nhập địa chỉ để tìm hoặc dán tọa độ Google Maps theo dạng <b>Vĩ độ, Kinh độ</b>.</p><label>Tên địa điểm<input id="nameInput" required maxlength="100" placeholder="Ví dụ: Quán bún bò..." /></label><label>Địa chỉ<div class="address-search"><input id="addressInput" maxlength="250" placeholder="Ví dụ: 450/3 Phan Xích Long, TP.HCM" /><button type="button" id="searchAddressBtn" class="secondary">🔎 Tìm địa chỉ</button></div></label><div id="addressResults" class="address-results"></div><button type="button" id="pickLocationBtn" class="pick-location">🎯 Chọn chính xác trên bản đồ</button><div id="selectedLocation" class="selected-location">Chưa chọn vị trí chính xác</div><label>Loại<select id="categoryInput"><option value="food">🍜 Ăn uống</option><option value="fun">🎮 Vui chơi</option><option value="cafe">☕ Cafe</option><option value="other">📌 Khác</option></select></label><label>Ghi chú<textarea id="noteInput" rows="3" maxlength="300" placeholder="Món ngon, giá, giờ mở cửa..."></textarea></label><label>📍 Tọa độ <span style="font-weight:400;color:#777">(Vĩ độ, Kinh độ)</span><input id="coordInput" type="text" inputmode="decimal" autocomplete="off" placeholder="10.800829838769747, 106.68482208597538" /><small>Dán nguyên dòng tọa độ từ Google Maps.</small></label><input id="latInput" type="hidden" /><input id="lngInput" type="hidden" /><label class="check"><input id="wantInput" type="checkbox" /> ❤️ Muốn đi</label><div class="form-actions"><button type="button" id="cancelPlaceBtn" class="secondary">Hủy</button><button id="saveBtn" type="submit" class="primary">Lưu địa điểm</button></div><p id="formError" class="error"></p></form></dialog>
+<div id="pickerOverlay" class="picker-overlay" hidden><div class="picker-panel"><div class="picker-head"><div><h3>🎯 Chọn vị trí chính xác</h3><p>Bấm vào bản đồ hoặc kéo ghim đến đúng vị trí.</p></div><button type="button" id="closePickerBtn" class="icon-btn">✕</button></div><div id="pickerMap" class="picker-map"></div><div class="picker-footer"><span id="pickerCoords">Chưa chọn vị trí</span><button type="button" id="confirmPickerBtn" class="primary">✓ Dùng vị trí này</button></div></div></div>
+</main><script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script><script src="app.js"></script></body></html>
