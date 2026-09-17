@@ -121,8 +121,9 @@ async function handlePlaces(req, res, url) {
     const match = url.pathname.match(/^\/api\/places\/([^/]+)$/);
     if (req.method === 'PATCH' && match) {
       const body = await readBody(req);
+      const wantsClear = body.rating === null || body.rating === '' || body.rating === undefined;
       const rating = normalizeRating(body.rating);
-      if (!rating) return send(res, 400, {error:'INVALID_RATING', message:'Đánh giá không hợp lệ.'});
+      if (!wantsClear && !rating) return send(res, 400, {error:'INVALID_RATING', message:'Đánh giá không hợp lệ.'});
       const rows = await supabaseRequest('PATCH', `places?id=eq.${encodeURIComponent(match[1])}`, {rating});
       const row = Array.isArray(rows) ? rows[0] : null;
       return send(res, 200, {place: row ? normalizePlace(row) : {id:match[1], rating}});
