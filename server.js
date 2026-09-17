@@ -11,16 +11,9 @@ const SUPABASE_URL = (process.env.SUPABASE_URL || '').replace(/\/$/, '');
 const SUPABASE_KEY = process.env.SUPABASE_PUBLISHABLE_KEY || '';
 
 const MIME = {
-  '.html': 'text/html; charset=utf-8',
-  '.js': 'text/javascript; charset=utf-8',
-  '.css': 'text/css; charset=utf-8',
-  '.json': 'application/json; charset=utf-8',
-  '.png': 'image/png',
-  '.jpg': 'image/jpeg',
-  '.jpeg': 'image/jpeg',
-  '.webp': 'image/webp',
-  '.svg': 'image/svg+xml',
-  '.ico': 'image/x-icon'
+  '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8',
+  '.json': 'application/json; charset=utf-8', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
+  '.webp': 'image/webp', '.svg': 'image/svg+xml', '.ico': 'image/x-icon'
 };
 
 function send(res, status, body, type='application/json; charset=utf-8') {
@@ -73,40 +66,28 @@ function supabaseConfigured() { return Boolean(SUPABASE_URL && SUPABASE_KEY); }
 
 async function supabaseRequest(method, pathname, body) {
   if (!supabaseConfigured()) throw Object.assign(new Error('SUPABASE_NOT_CONFIGURED'), {code: 'SUPABASE_NOT_CONFIGURED'});
-  const headers = {
-    apikey: SUPABASE_KEY,
-    Authorization: `Bearer ${SUPABASE_KEY}`,
-    Accept: 'application/json'
-  };
+  const headers = { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, Accept: 'application/json' };
   if (body !== undefined) {
     headers['Content-Type'] = 'application/json';
     headers['Prefer'] = 'return=representation';
   }
-  const response = await fetch(`${SUPABASE_URL}/rest/v1/${pathname}`, {
-    method,
-    headers,
-    body: body === undefined ? undefined : JSON.stringify(body)
-  });
+  const response = await fetch(`${SUPABASE_URL}/rest/v1/${pathname}`, {method, headers, body: body === undefined ? undefined : JSON.stringify(body)});
   const text = await response.text();
   let data = null;
   try { data = text ? JSON.parse(text) : null; } catch (_) { data = {raw: text}; }
-  if (!response.ok) {
-    throw Object.assign(new Error(data?.message || data?.hint || data?.details || `Supabase HTTP ${response.status}`), {code: data?.code || `HTTP_${response.status}`, status: response.status, data});
-  }
+  if (!response.ok) throw Object.assign(new Error(data?.message || data?.hint || data?.details || `Supabase HTTP ${response.status}`), {code: data?.code || `HTTP_${response.status}`, status: response.status, data});
   return data;
+}
+
+function normalizeRating(value) {
+  return ['like', 'neutral', 'dislike'].includes(value) ? value : null;
 }
 
 function normalizePlace(p) {
   return {
-    id: String(p.id),
-    name: String(p.name || ''),
-    address: String(p.address || ''),
-    category: String(p.category || 'food'),
-    note: String(p.note || ''),
-    lat: Number(p.lat),
-    lng: Number(p.lng),
-    want: Boolean(p.want),
-    createdAt: Number(p.createdAt ?? p.created_at ?? Date.now())
+    id: String(p.id), name: String(p.name || ''), address: String(p.address || ''),
+    category: String(p.category || 'food'), note: String(p.note || ''), lat: Number(p.lat), lng: Number(p.lng),
+    want: Boolean(p.want), rating: normalizeRating(p.rating), createdAt: Number(p.createdAt ?? p.created_at ?? Date.now())
   };
 }
 
@@ -117,9 +98,7 @@ async function readBody(req) {
       data += chunk;
       if (data.length > 1024 * 1024) reject(new Error('BODY_TOO_LARGE'));
     });
-    req.on('end', () => {
-      try { resolve(data ? JSON.parse(data) : {}); } catch (_) { reject(new Error('INVALID_JSON')); }
-    });
+    req.on('end', () => { try { resolve(data ? JSON.parse(data) : {}); } catch (_) { reject(new Error('INVALID_JSON')); } });
     req.on('error', reject);
   });
 }
@@ -127,36 +106,35 @@ async function readBody(req) {
 async function handlePlaces(req, res, url) {
   if (!url.pathname.startsWith('/api/places')) return false;
   if (!supabaseConfigured()) return send(res, 503, {error: 'SUPABASE_NOT_CONFIGURED', message: 'Chưa cấu hình Supabase.'});
-
   try {
     if (req.method === 'GET' && url.pathname === '/api/places') {
       const rows = await supabaseRequest('GET', 'places?select=*&order=created_at.asc');
       return send(res, 200, {places: Array.isArray(rows) ? rows.map(normalizePlace) : []});
     }
-
     if (req.method === 'POST' && url.pathname === '/api/places') {
       const p = normalizePlace(await readBody(req));
-      if (!p.id || !p.name || !Number.isFinite(p.lat) || !Number.isFinite(p.lng)) {
-        return send(res, 400, {error: 'INVALID_PLACE', message: 'Dữ liệu địa điểm không hợp lệ.'});
-      }
-      const row = {
-        id: p.id, name: p.name, address: p.address, category: p.category, note: p.note,
-        lat: p.lat, lng: p.lng, want: p.want, created_at: p.createdAt
-      };
+      if (!p.id || !p.name || !Number.isFinite(p.lat) || !Number.isFinite(p.lng)) return send(res, 400, {error: 'INVALID_PLACE', message: 'Dữ liệu địa điểm không hợp lệ.'});
+      const row = {id:p.id,name:p.name,address:p.address,category:p.category,note:p.note,lat:p.lat,lng:p.lng,want:p.want,rating:p.rating,created_at:p.createdAt};
       const rows = await supabaseRequest('POST', 'places', [row]);
       return send(res, 201, {place: normalizePlace(Array.isArray(rows) ? rows[0] : row)});
     }
-
     const match = url.pathname.match(/^\/api\/places\/([^/]+)$/);
+    if (req.method === 'PATCH' && match) {
+      const body = await readBody(req);
+      const rating = normalizeRating(body.rating);
+      if (!rating) return send(res, 400, {error:'INVALID_RATING', message:'Đánh giá không hợp lệ.'});
+      const rows = await supabaseRequest('PATCH', `places?id=eq.${encodeURIComponent(match[1])}`, {rating});
+      const row = Array.isArray(rows) ? rows[0] : null;
+      return send(res, 200, {place: row ? normalizePlace(row) : {id:match[1], rating}});
+    }
     if (req.method === 'DELETE' && match) {
       await supabaseRequest('DELETE', `places?id=eq.${encodeURIComponent(match[1])}`);
       return send(res, 200, {ok: true});
     }
-
-    return send(res, 404, {error: 'NOT_FOUND'});
+    return send(res, 404, {error:'NOT_FOUND'});
   } catch (error) {
     console.error('Places API error:', error);
-    return send(res, error.status || 502, {error: error.code || 'SUPABASE_ERROR', message: error.message || 'Không thể truy cập dữ liệu địa điểm.'});
+    return send(res, error.status || 502, {error:error.code || 'SUPABASE_ERROR', message:error.message || 'Không thể truy cập dữ liệu địa điểm.'});
   }
 }
 
@@ -165,63 +143,38 @@ async function handleApi(req, res, url) {
   if (placesHandled !== false) return true;
   if (req.method !== 'GET') return false;
   if (url.pathname === '/api/address-search') {
-    const q = (url.searchParams.get('q') || '').trim();
-    const sessionToken = (url.searchParams.get('sessionToken') || '').trim();
-    if (!q) return send(res, 400, {error: 'EMPTY_QUERY', message: 'Thiếu địa chỉ cần tìm.'});
-    if (q.length < 2) return send(res, 400, {error: 'SHORT_QUERY', message: 'Hãy nhập ít nhất 2 ký tự.'});
-    if (!GOGODUK_API_KEY) return send(res, 503, {error: 'GOGODUK_API_KEY_NOT_CONFIGURED', message: 'Chưa cấu hình GoGoDuk API key.'});
-    return addressSuggest(res, q, sessionToken);
+    const q=(url.searchParams.get('q')||'').trim(), sessionToken=(url.searchParams.get('sessionToken')||'').trim();
+    if (!q) return send(res,400,{error:'EMPTY_QUERY',message:'Thiếu địa chỉ cần tìm.'});
+    if (q.length<2) return send(res,400,{error:'SHORT_QUERY',message:'Hãy nhập ít nhất 2 ký tự.'});
+    if (!GOGODUK_API_KEY) return send(res,503,{error:'GOGODUK_API_KEY_NOT_CONFIGURED',message:'Chưa cấu hình GoGoDuk API key.'});
+    return addressSuggest(res,q,sessionToken);
   }
   if (url.pathname === '/api/address-resolve') {
-    const id = (url.searchParams.get('id') || '').trim();
-    const sessionToken = (url.searchParams.get('sessionToken') || '').trim();
-    if (!id) return send(res, 400, {error: 'EMPTY_PLACE_ID', message: 'Thiếu place ID.'});
-    if (!GOGODUK_API_KEY) return send(res, 503, {error: 'GOGODUK_API_KEY_NOT_CONFIGURED', message: 'Chưa cấu hình GoGoDuk API key.'});
-    return placeResolve(res, id, sessionToken);
+    const id=(url.searchParams.get('id')||'').trim(), sessionToken=(url.searchParams.get('sessionToken')||'').trim();
+    if (!id) return send(res,400,{error:'EMPTY_PLACE_ID',message:'Thiếu place ID.'});
+    if (!GOGODUK_API_KEY) return send(res,503,{error:'GOGODUK_API_KEY_NOT_CONFIGURED',message:'Chưa cấu hình GoGoDuk API key.'});
+    return placeResolve(res,id,sessionToken);
   }
   if (url.pathname === '/api/address-reverse') {
-    const lat = Number(url.searchParams.get('lat'));
-    const lng = Number(url.searchParams.get('lng'));
-    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return send(res, 400, {error: 'INVALID_COORDINATES', message: 'Tọa độ không hợp lệ.'});
-    if (!GOGODUK_API_KEY) return send(res, 503, {error: 'GOGODUK_API_KEY_NOT_CONFIGURED', message: 'Chưa cấu hình GoGoDuk API key.'});
-    return addressReverse(res, lat, lng);
+    const lat=Number(url.searchParams.get('lat')), lng=Number(url.searchParams.get('lng'));
+    if (!Number.isFinite(lat)||!Number.isFinite(lng)) return send(res,400,{error:'INVALID_COORDINATES',message:'Tọa độ không hợp lệ.'});
+    if (!GOGODUK_API_KEY) return send(res,503,{error:'GOGODUK_API_KEY_NOT_CONFIGURED',message:'Chưa cấu hình GoGoDuk API key.'});
+    return addressReverse(res,lat,lng);
   }
   return false;
 }
 
-function serveStatic(req, res, url) {
-  let pathname = decodeURIComponent(url.pathname);
-  if (pathname === '/') pathname = '/index.html';
-  const filePath = path.normalize(path.join(ROOT, pathname));
-  if (!filePath.startsWith(ROOT)) return send(res, 403, {error: 'FORBIDDEN'});
-  fs.stat(filePath, (err, stat) => {
-    if (!err && stat.isDirectory()) return serveFile(path.join(filePath, 'index.html'), res);
-    if (err) return serveFile(path.join(ROOT, 'index.html'), res);
-    return serveFile(filePath, res);
-  });
+function serveStatic(req,res,url){
+  let pathname=decodeURIComponent(url.pathname); if(pathname==='/') pathname='/index.html';
+  const filePath=path.normalize(path.join(ROOT,pathname));
+  if(!filePath.startsWith(ROOT)) return send(res,403,{error:'FORBIDDEN'});
+  fs.stat(filePath,(err,stat)=>{if(!err&&stat.isDirectory())return serveFile(path.join(filePath,'index.html'),res);if(err)return serveFile(path.join(ROOT,'index.html'),res);return serveFile(filePath,res)});
 }
+function serveFile(filePath,res){fs.readFile(filePath,(err,data)=>{if(err)return send(res,404,{error:'NOT_FOUND'});const ext=path.extname(filePath).toLowerCase();res.writeHead(200,{'Content-Type':MIME[ext]||'application/octet-stream'});res.end(data)})}
 
-function serveFile(filePath, res) {
-  fs.readFile(filePath, (err, data) => {
-    if (err) return send(res, 404, {error: 'NOT_FOUND'});
-    const ext = path.extname(filePath).toLowerCase();
-    res.writeHead(200, {'Content-Type': MIME[ext] || 'application/octet-stream'});
-    res.end(data);
-  });
-}
-
-const server = http.createServer(async (req, res) => {
-  const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
-  if (url.pathname.startsWith('/api/')) {
-    try {
-      const handled = await handleApi(req, res, url);
-      if (handled !== false) return;
-    } catch (error) {
-      return send(res, 502, {error: 'API_UNAVAILABLE', message: error.message});
-    }
-    return send(res, 404, {error: 'NOT_FOUND'});
-  }
-  serveStatic(req, res, url);
+const server=http.createServer(async(req,res)=>{
+  const url=new URL(req.url,`http://${req.headers.host||'localhost'}`);
+  if(url.pathname.startsWith('/api/')){try{const handled=await handleApi(req,res,url);if(handled!==false)return}catch(error){return send(res,502,{error:'API_UNAVAILABLE',message:error.message})}return send(res,404,{error:'NOT_FOUND'})}
+  serveStatic(req,res,url);
 });
-
-server.listen(PORT, '0.0.0.0', () => console.log(`My Place Map listening on ${PORT}`));
+server.listen(PORT,'0.0.0.0',()=>console.log(`My Place Map listening on ${PORT}`));
