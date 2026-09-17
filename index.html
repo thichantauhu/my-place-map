@@ -4,6 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>My Place Map</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
@@ -26,12 +27,8 @@
     </section>
 
     <section class="map-shell">
-      <div id="map" class="map">
-        <div class="map-grid"></div>
-        <div id="userPin" class="user-pin hidden">●</div>
-        <div id="markers"></div>
-        <div id="mapHint" class="map-hint">Bản đồ sẽ hiển thị tại đây. Bấm “Vị trí của tôi” để định vị.</div>
-      </div>
+      <div id="map" class="map"></div>
+      <div id="mapHint" class="map-hint">Đang lấy vị trí của bạn…</div>
     </section>
 
     <section class="nearby-head">
@@ -56,6 +53,7 @@
           <h3>Thêm địa điểm</h3>
           <button value="cancel" class="icon-btn" aria-label="Đóng">✕</button>
         </div>
+        <p class="form-tip">💡 Có thể bấm trực tiếp lên bản đồ để lấy tọa độ.</p>
         <label>Tên địa điểm<input id="nameInput" required maxlength="100" placeholder="Ví dụ: Quán bún bò..." /></label>
         <label>Loại<select id="categoryInput">
           <option value="food">🍜 Ăn uống</option>
@@ -63,9 +61,11 @@
           <option value="cafe">☕ Cafe</option>
           <option value="other">📌 Khác</option>
         </select></label>
-        <label>Ghi chú<textarea id="noteInput" rows="3" maxlength="300" placeholder="Món ngon, giá, giờ mở cửa..." ></textarea></label>
-        <label>Vĩ độ<input id="latInput" type="number" step="any" placeholder="Nhập hoặc dùng vị trí hiện tại" /></label>
-        <label>Kinh độ<input id="lngInput" type="number" step="any" placeholder="Nhập hoặc dùng vị trí hiện tại" /></label>
+        <label>Ghi chú<textarea id="noteInput" rows="3" maxlength="300" placeholder="Món ngon, giá, giờ mở cửa..."></textarea></label>
+        <div class="coord-grid">
+          <label>Vĩ độ<input id="latInput" type="number" step="any" required /></label>
+          <label>Kinh độ<input id="lngInput" type="number" step="any" required /></label>
+        </div>
         <label class="check"><input id="wantInput" type="checkbox" /> ❤️ Muốn đi</label>
         <div class="form-actions">
           <button value="cancel" class="secondary">Hủy</button>
@@ -75,6 +75,7 @@
       </form>
     </dialog>
   </main>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
