@@ -10,10 +10,7 @@
 <body>
   <main class="app">
     <header class="topbar">
-      <div>
-        <h1>📍 My Place Map</h1>
-        <p>Lưu những nơi muốn ăn, chơi và ghé lại.</p>
-      </div>
+      <div><h1>📍 My Place Map</h1><p>Lưu những nơi muốn ăn, chơi và ghé lại.</p></div>
       <button id="locateBtn" class="secondary">📍 Vị trí của tôi</button>
     </header>
 
@@ -32,16 +29,10 @@
     </section>
 
     <section class="nearby-head">
-      <div>
-        <h2>Địa điểm gần bạn</h2>
-        <span id="countText">0 địa điểm</span>
-      </div>
+      <div><h2>Địa điểm gần bạn</h2><span id="countText">0 địa điểm</span></div>
       <select id="radiusSelect" aria-label="Khoảng cách">
-        <option value="1">Trong 1 km</option>
-        <option value="3" selected>Trong 3 km</option>
-        <option value="5">Trong 5 km</option>
-        <option value="10">Trong 10 km</option>
-        <option value="999">Tất cả</option>
+        <option value="1">Trong 1 km</option><option value="3" selected>Trong 3 km</option>
+        <option value="5">Trong 5 km</option><option value="10">Trong 10 km</option><option value="999">Tất cả</option>
       </select>
     </section>
 
@@ -49,28 +40,21 @@
 
     <dialog id="placeDialog">
       <form method="dialog" id="placeForm" class="form">
-        <div class="dialog-head">
-          <h3>Thêm địa điểm</h3>
-          <button value="cancel" class="icon-btn" aria-label="Đóng">✕</button>
-        </div>
-        <p class="form-tip">💡 Có thể bấm trực tiếp lên bản đồ để lấy tọa độ.</p>
+        <div class="dialog-head"><h3>Thêm địa điểm</h3><button value="cancel" class="icon-btn" aria-label="Đóng">✕</button></div>
+        <p class="form-tip">💡 Nhập địa chỉ để tìm tự động, hoặc bấm trực tiếp lên bản đồ.</p>
         <label>Tên địa điểm<input id="nameInput" required maxlength="100" placeholder="Ví dụ: Quán bún bò..." /></label>
-        <label>Loại<select id="categoryInput">
-          <option value="food">🍜 Ăn uống</option>
-          <option value="fun">🎮 Vui chơi</option>
-          <option value="cafe">☕ Cafe</option>
-          <option value="other">📌 Khác</option>
-        </select></label>
+        <label>Địa chỉ
+          <div class="address-search"><input id="addressInput" maxlength="250" placeholder="Ví dụ: 224 Nguyễn Văn Đậu, Bình Thạnh, TP.HCM" /><button type="button" id="searchAddressBtn" class="secondary">🔎 Tìm địa chỉ</button></div>
+        </label>
+        <div id="addressResults" class="address-results"></div>
+        <label>Loại<select id="categoryInput"><option value="food">🍜 Ăn uống</option><option value="fun">🎮 Vui chơi</option><option value="cafe">☕ Cafe</option><option value="other">📌 Khác</option></select></label>
         <label>Ghi chú<textarea id="noteInput" rows="3" maxlength="300" placeholder="Món ngon, giá, giờ mở cửa..."></textarea></label>
         <div class="coord-grid">
           <label>Vĩ độ<input id="latInput" type="number" step="any" required /></label>
           <label>Kinh độ<input id="lngInput" type="number" step="any" required /></label>
         </div>
         <label class="check"><input id="wantInput" type="checkbox" /> ❤️ Muốn đi</label>
-        <div class="form-actions">
-          <button value="cancel" class="secondary">Hủy</button>
-          <button id="saveBtn" value="default" class="primary">Lưu địa điểm</button>
-        </div>
+        <div class="form-actions"><button value="cancel" class="secondary">Hủy</button><button id="saveBtn" value="default" class="primary">Lưu địa điểm</button></div>
         <p id="formError" class="error"></p>
       </form>
     </dialog>
