@@ -7,6 +7,8 @@ const PORT = Number(process.env.PORT || 10000);
 const ROOT = __dirname;
 const GOGODUK_API_KEY = process.env.GOGODUK_API_KEY || '';
 const GOGODUK_API = 'https://api.gogoduk.com';
+const SUPABASE_URL = (process.env.SUPABASE_URL || '').replace(/\/$/, '');
+const SUPABASE_KEY = process.env.SUPABASE_PUBLISHABLE_KEY || '';
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -67,7 +69,100 @@ async function addressReverse(res, lat, lng) {
   }
 }
 
+function supabaseConfigured() { return Boolean(SUPABASE_URL && SUPABASE_KEY); }
+
+async function supabaseRequest(method, pathname, body) {
+  if (!supabaseConfigured()) throw Object.assign(new Error('SUPABASE_NOT_CONFIGURED'), {code: 'SUPABASE_NOT_CONFIGURED'});
+  const headers = {
+    apikey: SUPABASE_KEY,
+    Authorization: `Bearer ${SUPABASE_KEY}`,
+    Accept: 'application/json'
+  };
+  if (body !== undefined) {
+    headers['Content-Type'] = 'application/json';
+    headers['Prefer'] = 'return=representation';
+  }
+  const response = await fetch(`${SUPABASE_URL}/rest/v1/${pathname}`, {
+    method,
+    headers,
+    body: body === undefined ? undefined : JSON.stringify(body)
+  });
+  const text = await response.text();
+  let data = null;
+  try { data = text ? JSON.parse(text) : null; } catch (_) { data = {raw: text}; }
+  if (!response.ok) {
+    throw Object.assign(new Error(data?.message || data?.hint || data?.details || `Supabase HTTP ${response.status}`), {code: data?.code || `HTTP_${response.status}`, status: response.status, data});
+  }
+  return data;
+}
+
+function normalizePlace(p) {
+  return {
+    id: String(p.id),
+    name: String(p.name || ''),
+    address: String(p.address || ''),
+    category: String(p.category || 'food'),
+    note: String(p.note || ''),
+    lat: Number(p.lat),
+    lng: Number(p.lng),
+    want: Boolean(p.want),
+    createdAt: Number(p.createdAt ?? p.created_at ?? Date.now())
+  };
+}
+
+async function readBody(req) {
+  return new Promise((resolve, reject) => {
+    let data = '';
+    req.on('data', chunk => {
+      data += chunk;
+      if (data.length > 1024 * 1024) reject(new Error('BODY_TOO_LARGE'));
+    });
+    req.on('end', () => {
+      try { resolve(data ? JSON.parse(data) : {}); } catch (_) { reject(new Error('INVALID_JSON')); }
+    });
+    req.on('error', reject);
+  });
+}
+
+async function handlePlaces(req, res, url) {
+  if (!url.pathname.startsWith('/api/places')) return false;
+  if (!supabaseConfigured()) return send(res, 503, {error: 'SUPABASE_NOT_CONFIGURED', message: 'Chưa cấu hình Supabase.'});
+
+  try {
+    if (req.method === 'GET' && url.pathname === '/api/places') {
+      const rows = await supabaseRequest('GET', 'places?select=*&order=created_at.asc');
+      return send(res, 200, {places: Array.isArray(rows) ? rows.map(normalizePlace) : []});
+    }
+
+    if (req.method === 'POST' && url.pathname === '/api/places') {
+      const p = normalizePlace(await readBody(req));
+      if (!p.id || !p.name || !Number.isFinite(p.lat) || !Number.isFinite(p.lng)) {
+        return send(res, 400, {error: 'INVALID_PLACE', message: 'Dữ liệu địa điểm không hợp lệ.'});
+      }
+      const row = {
+        id: p.id, name: p.name, address: p.address, category: p.category, note: p.note,
+        lat: p.lat, lng: p.lng, want: p.want, created_at: p.createdAt
+      };
+      const rows = await supabaseRequest('POST', 'places', [row]);
+      return send(res, 201, {place: normalizePlace(Array.isArray(rows) ? rows[0] : row)});
+    }
+
+    const match = url.pathname.match(/^\/api\/places\/([^/]+)$/);
+    if (req.method === 'DELETE' && match) {
+      await supabaseRequest('DELETE', `places?id=eq.${encodeURIComponent(match[1])}`);
+      return send(res, 200, {ok: true});
+    }
+
+    return send(res, 404, {error: 'NOT_FOUND'});
+  } catch (error) {
+    console.error('Places API error:', error);
+    return send(res, error.status || 502, {error: error.code || 'SUPABASE_ERROR', message: error.message || 'Không thể truy cập dữ liệu địa điểm.'});
+  }
+}
+
 async function handleApi(req, res, url) {
+  const placesHandled = await handlePlaces(req, res, url);
+  if (placesHandled !== false) return true;
   if (req.method !== 'GET') return false;
   if (url.pathname === '/api/address-search') {
     const q = (url.searchParams.get('q') || '').trim();
