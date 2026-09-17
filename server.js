@@ -121,12 +121,20 @@ async function handlePlaces(req, res, url) {
     const match = url.pathname.match(/^\/api\/places\/([^/]+)$/);
     if (req.method === 'PATCH' && match) {
       const body = await readBody(req);
-      const wantsClear = body.rating === null || body.rating === '' || body.rating === undefined;
-      const rating = normalizeRating(body.rating);
-      if (!wantsClear && !rating) return send(res, 400, {error:'INVALID_RATING', message:'Đánh giá không hợp lệ.'});
-      const rows = await supabaseRequest('PATCH', `places?id=eq.${encodeURIComponent(match[1])}`, {rating});
+      const update = {};
+      if (Object.prototype.hasOwnProperty.call(body, 'rating')) {
+        const wantsClear = body.rating === null || body.rating === '' || body.rating === undefined;
+        const rating = normalizeRating(body.rating);
+        if (!wantsClear && !rating) return send(res, 400, {error:'INVALID_RATING', message:'Đánh giá không hợp lệ.'});
+        update.rating = rating;
+      }
+      if (Object.prototype.hasOwnProperty.call(body, 'address')) {
+        update.address = String(body.address || '').trim();
+      }
+      if (!Object.keys(update).length) return send(res, 400, {error:'EMPTY_UPDATE', message:'Không có nội dung cần cập nhật.'});
+      const rows = await supabaseRequest('PATCH', `places?id=eq.${encodeURIComponent(match[1])}`, update);
       const row = Array.isArray(rows) ? rows[0] : null;
-      return send(res, 200, {place: row ? normalizePlace(row) : {id:match[1], rating}});
+      return send(res, 200, {place: row ? normalizePlace(row) : {id:match[1], ...update}});
     }
     if (req.method === 'DELETE' && match) {
       await supabaseRequest('DELETE', `places?id=eq.${encodeURIComponent(match[1])}`);
