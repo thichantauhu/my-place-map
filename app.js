@@ -14,8 +14,33 @@ function readCoords(){const c=parseCoords(els.coord.value);if(c){syncCoords(c.la
 function normalizePlace(p){return{id:String(p.id),name:String(p.name||''),address:String(p.address||''),category:String(p.category||'food'),note:String(p.note||''),lat:Number(p.lat),lng:Number(p.lng),want:Boolean(p.want),rating:['like','neutral','dislike'].includes(p.rating)?p.rating:null,createdAt:Number(p.createdAt??p.created_at??Date.now())}}
 function loadPlaces(){try{const arr=JSON.parse(localStorage.getItem(STORAGE_KEY)||'[]');const seen=new Set();const out=arr.map(normalizePlace).filter(p=>{const key=`${p.name}|${p.lat}|${p.lng}|${p.address}`;if(seen.has(key))return false;seen.add(key);return true});if(out.length!==arr.length)localStorage.setItem(STORAGE_KEY,JSON.stringify(out));return out}catch(_){return[]}}
 function savePlaces(){localStorage.setItem(STORAGE_KEY,JSON.stringify(places))}
-async function api(path,options={}){const res=await fetch(path,{headers:{Accept:'application/json','Content-Type':'application/json',...(options.headers||{})},...options});const data=await res.json().catch(()=>({}));if(!res.ok)throw Object.assign(new Error(data.message||data.error||'API error'),{status:res.status,code:data.error});return data}
-async function syncRemote(){try{const data=await api('/api/places');const remote=Array.isArray(data.places)?data.places.map(normalizePlace):[];if(remote.length){places=remote;savePlaces();render()} }catch(_){}
+const SUPABASE_URL='https://ieywxjnybpfchocvgvqt.supabase.co';
+const SUPABASE_KEY='sb_publishable_TKSDmnJWKpM14A0H8pDxug_Ny2SGHYD';
+async function api(path,options={}){
+  const method=(options.method||'GET').toUpperCase();
+  let url=path;
+  if(path==='/api/places') url=`${SUPABASE_URL}/rest/v1/places?select=*&order=created_at.asc`;
+  else {
+    const m=path.match(/^\/api\/places\/([^/]+)$/);
+    if(m) url=`${SUPABASE_URL}/rest/v1/places?id=eq.${encodeURIComponent(m[1])}`;
+  }
+  const headers={Accept:'application/json','Content-Type':'application/json','apikey':SUPABASE_KEY,'Authorization':`Bearer ${SUPABASE_KEY}`,...(options.headers||{})};
+  const body=options.body;
+  let payload=body;
+  if(body && method==='POST'){
+    const p=JSON.parse(body);
+    payload=JSON.stringify({id:p.id,name:p.name,address:p.address,category:p.category,note:p.note,lat:p.lat,lng:p.lng,want:p.want,rating:p.rating,created_at:p.createdAt});
+    headers.Prefer='return=representation';
+  }
+  const res=await fetch(url,{...options,method,headers,body:payload});
+  const data=await res.json().catch(()=>({}));
+  if(!res.ok)throw Object.assign(new Error(data.message||data.error||'API error'),{status:res.status,code:data.error});
+  if(method==='GET') return {places:Array.isArray(data)?data:[]};
+  if(method==='POST') return {place:Array.isArray(data)?data[0]:data};
+  if(method==='PATCH') return {place:Array.isArray(data)?data[0]:data};
+  return data;
+}
+async function syncRemote(){try{const data=await api('/api/places');const remote=Array.isArray(data.places)?data.places.map(normalizePlace):[];places=remote;savePlaces();render()}catch(_){}
 }
 function distanceKm(aLat,aLng,bLat,bLng){const R=6371,p1=aLat*Math.PI/180,p2=bLat*Math.PI/180,dp=(bLat-aLat)*Math.PI/180,dl=(bLng-aLng)*Math.PI/180,x=Math.sin(dp/2)**2+Math.cos(p1)*Math.cos(p2)*Math.sin(dl/2)**2;return 2*R*Math.asin(Math.sqrt(x))}
 function filteredPlaces(){const radius=Number(els.radius.value);return places.map(p=>({...p,distance:currentLocation?distanceKm(currentLocation.lat,currentLocation.lng,p.lat,p.lng):null})).filter(p=>{if(activeFilter==='want'&&!p.want)return false;if(['food','fun','cafe'].includes(activeFilter)&&p.category!==activeFilter)return false;if(currentLocation&&radius<999&&p.distance>radius)return false;return true}).sort((a,b)=>a.distance!=null&&b.distance!=null?a.distance-b.distance:b.createdAt-a.createdAt)}
