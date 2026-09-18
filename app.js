@@ -190,4 +190,4 @@ function useLocation(){
 els.add.onclick=()=>openAddDialog();els.closePlace.onclick=closePlaceDialog;els.cancelPlace.onclick=closePlaceDialog;els.form.addEventListener('submit',savePlace);els.searchAddress.onclick=searchAddress;els.pickLocation.onclick=openPicker;els.closePicker.onclick=closePicker;els.confirmPicker.onclick=confirmPicker;els.locate.onclick=useLocation;els.radius.onchange=render;
 document.querySelectorAll('.chip').forEach(b=>b.onclick=()=>{document.querySelectorAll('.chip').forEach(x=>x.classList.remove('active'));b.classList.add('active');activeFilter=b.dataset.filter;render()});
 els.ratingOptions?.querySelectorAll('[data-rating]').forEach(b=>b.onclick=()=>setRating(b.dataset.rating));els.closeRating?.addEventListener('click',()=>els.ratingDialog.close());
-initMap();render();syncRemote();
+initMap();render();syncRemote();setTimeout(useLocation,250);
