@@ -41,13 +41,10 @@
       save.disabled = true;
       save.textContent = '⌛ Đang lưu...';
       try {
-        const res = await fetch(`/api/places/${encodeURIComponent(id)}`, {
+        await api(`/api/places/${encodeURIComponent(id)}`, {
           method: 'PATCH',
-          headers: {'Content-Type': 'application/json', Accept: 'application/json'},
           body: JSON.stringify({address})
         });
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(data.message || 'Không lưu được địa chỉ.');
         close();
         location.reload();
       } catch (err) {
