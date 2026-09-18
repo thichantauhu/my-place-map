@@ -136,7 +136,6 @@ function openEditDialog(id){
   els.category.value=p.category||'food';
   syncCoords(p.lat,p.lng);
   els.dialog.querySelector('h3').textContent='✏️ Chỉnh sửa địa điểm';
-  els.saveBtn?.remove?.();
   if(els.saveBtn) els.saveBtn.textContent='Lưu thay đổi';
   els.dialog.showModal();
   setTimeout(()=>els.name.focus(),50);
