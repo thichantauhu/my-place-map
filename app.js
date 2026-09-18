@@ -66,9 +66,42 @@ async function savePlace(e){e.preventDefault();els.error.textContent='';const na
 function openRating(id){const p=places.find(x=>x.id===id);if(!p||!els.ratingDialog)return;ratingPlaceId=id;els.ratingName.textContent=p.name;els.ratingAddress.textContent=p.address||`${p.lat}, ${p.lng}`;els.ratingError.textContent='';els.ratingOptions.querySelectorAll('[data-rating]').forEach(b=>b.classList.toggle('selected',b.dataset.rating===p.rating));els.ratingDialog.showModal()}
 async function setRating(rating){const p=places.find(x=>x.id===ratingPlaceId);if(!p)return;els.ratingError.textContent='⏳ Đang lưu...';try{await api(`/api/places/${encodeURIComponent(p.id)}`,{method:'PATCH',body:JSON.stringify({rating})});p.rating=rating;savePlaces();els.ratingDialog.close();render();map.setView([p.lat,p.lng],18,{animate:true});placeMarkers.get(p.id)?.openPopup()}catch(_){els.ratingError.textContent='Không lưu được đánh giá. Kiểm tra lại kết nối.'}}
 function setCurrentLocation(lat,lng,accuracy){currentLocation={lat,lng};if(userMarker)userMarker.setLatLng([lat,lng]);else userMarker=L.circleMarker([lat,lng],{radius:8,color:'#fff',weight:3,fillColor:'#1976d2',fillOpacity:1}).addTo(map).bindTooltip('Vị trí của bạn');if(userAccuracy)userAccuracy.remove();if(accuracy>0)userAccuracy=L.circle([lat,lng],{radius:accuracy,color:'#1976d2',weight:1,fillOpacity:.08}).addTo(map);map.setView([lat,lng],15);els.mapHint.textContent='📍 Đã xác định vị trí của bạn. Nhấp đúp trên bản đồ để thêm địa điểm.';render()}
-function useLocation(){if(!navigator.geolocation){els.mapHint.textContent='Trình duyệt không hỗ trợ định vị.';return}els.locate.disabled=true;els.locate.textContent='⌛ Đang định vị...';navigator.geolocation.getCurrentPosition(p=>{setCurrentLocation(p.coords.latitude,p.coords.longitude,p.coords.accuracy);els.locate.disabled=false;els.locate.textContent='📍 Vị trí của tôi'},()=>{els.mapHint.textContent='⚠️ Chưa được cấp quyền vị trí. Bạn vẫn có thể dùng bản đồ.';els.locate.disabled=false;els.locate.textContent='📍 Vị trí của tôi';render()},{enableHighAccuracy:true,timeout:12000,maximumAge:60000})}
+function useLocation(){
+  if(!navigator.geolocation){
+    els.mapHint.textContent='⚠️ Trình duyệt không hỗ trợ định vị.';
+    return;
+  }
+  if(!window.isSecureContext){
+    els.mapHint.textContent='⚠️ Trang chưa chạy HTTPS nên không thể lấy vị trí.';
+    return;
+  }
+  els.locate.disabled=true;
+  els.locate.textContent='⌛ Đang định vị...';
+  navigator.geolocation.getCurrentPosition(
+    p=>{
+      setCurrentLocation(p.coords.latitude,p.coords.longitude,p.coords.accuracy);
+      els.locate.disabled=false;
+      els.locate.textContent='📍 Vị trí của tôi';
+    },
+    err=>{
+      let msg='⚠️ Không lấy được vị trí.';
+      if(err.code===1){
+        msg='⚠️ Safari đang chặn quyền vị trí cho trang này. Vào Safari → Cài đặt cho trang web → Vị trí → Cho phép, rồi bấm “📍 Vị trí của tôi” lại.';
+      }else if(err.code===2){
+        msg='⚠️ Safari chưa xác định được vị trí thiết bị. Kiểm tra Dịch vụ định vị của máy rồi thử lại.';
+      }else if(err.code===3){
+        msg='⚠️ Lấy vị trí quá lâu. Kiểm tra Wi‑Fi/Internet rồi thử lại.';
+      }
+      els.mapHint.textContent=msg;
+      els.locate.disabled=false;
+      els.locate.textContent='📍 Vị trí của tôi';
+      render();
+    },
+    {enableHighAccuracy:true,timeout:15000,maximumAge:30000}
+  );
+}
 
 els.add.onclick=()=>openAddDialog();els.closePlace.onclick=closePlaceDialog;els.cancelPlace.onclick=closePlaceDialog;els.form.addEventListener('submit',savePlace);els.searchAddress.onclick=searchAddress;els.pickLocation.onclick=openPicker;els.closePicker.onclick=closePicker;els.confirmPicker.onclick=confirmPicker;els.locate.onclick=useLocation;els.radius.onchange=render;
 document.querySelectorAll('.chip').forEach(b=>b.onclick=()=>{document.querySelectorAll('.chip').forEach(x=>x.classList.remove('active'));b.classList.add('active');activeFilter=b.dataset.filter;render()});
 els.ratingOptions?.querySelectorAll('[data-rating]').forEach(b=>b.onclick=()=>setRating(b.dataset.rating));els.closeRating?.addEventListener('click',()=>els.ratingDialog.close());
-initMap();render();syncRemote();useLocation();
+initMap();render();syncRemote();
