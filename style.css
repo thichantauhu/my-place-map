@@ -2,3 +2,5 @@
 .map-hint{display:none!important}
 
 .place-marker.rating-like{background:#ef4444;border-color:#b91c1c}.place-marker.rating-neutral{background:#facc15;border-color:#ca8a04}.place-marker.rating-dislike{background:#a855f7;border-color:#7e22ce}
+
+.place-link{display:block;margin-top:8px;color:#2563eb;text-decoration:none;font-size:13px;font-weight:650}.place-link:hover{text-decoration:underline}
