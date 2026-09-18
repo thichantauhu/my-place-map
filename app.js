@@ -1,7 +1,7 @@
 const STORAGE_KEY='my-place-map-places-v2';
 const GEOCODER='https://nominatim.openstreetmap.org';
 const ARCGIS='https://geocode-api.arcgis.com/arcgis/rest/services/World/GeocodeServer/findAddressCandidates';
-let places=loadPlaces(),currentLocation=null,activeFilter='all',map,userMarker,userAccuracy,placeMarkers=new Map();
+let places=loadPlaces(),currentLocation=null,activeFilter='all',map,userMarker,userAccuracy,placeMarkers=new Map(),roadDistances=new Map(),roadDistanceLoading=false;
 let pickerMap=null,pickerMarker=null,pickerPosition=null;
 const els={placeList:document.getElementById('placeList'),countText:document.getElementById('countText'),radius:document.getElementById('radiusSelect'),locate:document.getElementById('locateBtn'),add:document.getElementById('addBtn'),dialog:document.getElementById('placeDialog'),form:document.getElementById('placeForm'),closePlace:document.getElementById('closePlaceBtn'),cancelPlace:document.getElementById('cancelPlaceBtn'),name:document.getElementById('nameInput'),address:document.getElementById('addressInput'),searchAddress:document.getElementById('searchAddressBtn'),addressResults:document.getElementById('addressResults'),pickLocation:document.getElementById('pickLocationBtn'),selectedLocation:document.getElementById('selectedLocation'),category:document.getElementById('categoryInput'),note:document.getElementById('noteInput'),coord:document.getElementById('coordInput'),lat:document.getElementById('latInput'),lng:document.getElementById('lngInput'),want:document.getElementById('wantInput'),error:document.getElementById('formError'),mapHint:document.getElementById('mapHint'),pickerOverlay:document.getElementById('pickerOverlay'),pickerCoords:document.getElementById('pickerCoords'),confirmPicker:document.getElementById('confirmPickerBtn'),closePicker:document.getElementById('closePickerBtn'),ratingDialog:document.getElementById('ratingDialog'),ratingName:document.getElementById('ratingName'),ratingAddress:document.getElementById('ratingAddress'),ratingOptions:document.getElementById('ratingOptions'),saveBtn:document.getElementById('saveBtn'),ratingError:document.getElementById('ratingError'),closeRating:document.getElementById('closeRatingBtn')};
 const categoryInfo={food:{icon:'🍜',label:'Ăn uống'},fun:{icon:'🎮',label:'Vui chơi'},cafe:{icon:'☕',label:'Cafe'},other:{icon:'📌',label:'Khác'}};
@@ -43,13 +43,63 @@ async function api(path,options={}){
 async function syncRemote(){try{const data=await api('/api/places');const remote=Array.isArray(data.places)?data.places.map(normalizePlace):[];places=remote;savePlaces();render()}catch(_){}
 }
 function distanceKm(aLat,aLng,bLat,bLng){const R=6371,p1=aLat*Math.PI/180,p2=bLat*Math.PI/180,dp=(bLat-aLat)*Math.PI/180,dl=(bLng-aLng)*Math.PI/180,x=Math.sin(dp/2)**2+Math.cos(p1)*Math.cos(p2)*Math.sin(dl/2)**2;return 2*R*Math.asin(Math.sqrt(x))}
-function filteredPlaces(){const radius=Number(els.radius.value);return places.map(p=>({...p,distance:currentLocation?distanceKm(currentLocation.lat,currentLocation.lng,p.lat,p.lng):null})).filter(p=>{if(activeFilter==='want'&&!p.want)return false;if(['food','fun','cafe'].includes(activeFilter)&&p.category!==activeFilter)return false;if(currentLocation&&radius<999&&p.distance>radius)return false;return true}).sort((a,b)=>a.distance!=null&&b.distance!=null?a.distance-b.distance:b.createdAt-a.createdAt)}
+function filteredPlaces(){
+  const radius=Number(els.radius.value);
+  return places.map(p=>({...p,distance:currentLocation?(roadDistances.has(p.id)?roadDistances.get(p.id):null):null}))
+    .filter(p=>{
+      if(activeFilter==='want'&&!p.want)return false;
+      if(['food','fun','cafe'].includes(activeFilter)&&p.category!==activeFilter)return false;
+      if(currentLocation&&radius<999&&p.distance!=null&&p.distance>radius)return false;
+      return true;
+    })
+    .sort((a,b)=>{
+      if(a.distance!=null&&b.distance!=null)return a.distance-b.distance;
+      if(a.distance!=null)return -1;
+      if(b.distance!=null)return 1;
+      return b.createdAt-a.createdAt;
+    });
+}
+async function updateRoadDistances(){
+  if(!currentLocation||!places.length)return;
+  const targets=places.filter(p=>validCoord(Number(p.lat),Number(p.lng))).map(p=>({lat:Number(p.lat),lon:Number(p.lng)}));
+  if(!targets.length)return;
+  roadDistanceLoading=true;
+  render();
+  try{
+    const res=await fetch('https://valhalla1.openstreetmap.de/sources_to_targets',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','Accept':'application/json'},
+      body:JSON.stringify({
+        sources:[{lat:currentLocation.lat,lon:currentLocation.lng}],
+        targets,
+        costing:'motor_scooter',
+        units:'kilometers',
+        verbose:false
+      })
+    });
+    if(!res.ok)throw new Error('routing');
+    const data=await res.json();
+    const distances=data?.sources_to_targets?.distances?.[0];
+    if(!Array.isArray(distances))throw new Error('no distances');
+    roadDistances.clear();
+    let i=0;
+    places.filter(p=>validCoord(Number(p.lat),Number(p.lng))).forEach(p=>{
+      const d=Number(distances[i++]);
+      if(Number.isFinite(d))roadDistances.set(p.id,d);
+    });
+  }catch(_){
+    roadDistances.clear();
+  }finally{
+    roadDistanceLoading=false;
+    render();
+  }
+}
 function escapeHtml(v){return String(v??'').replace(/[&<>'"]/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[ch]))}
 function openDirections(lat,lng){window.open(`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(`${lat},${lng}`)}`,'_blank','noopener')}
 function markerIcon(p){const r=ratingInfo[p.rating];const text=r?r.icon:(categoryInfo[p.category]?.icon||'📌');return L.divIcon({className:'place-marker-wrap',html:`<div class="place-marker ${r?'rated-marker':''}" title="${escapeHtml(r?.label||'Đánh giá địa điểm')}">${text}</div>`,iconSize:[38,38],iconAnchor:[19,19],popupAnchor:[0,-18]})}
 function renderMarkers(data){placeMarkers.forEach(m=>m.remove());placeMarkers.clear();data.forEach(p=>{if(!validCoord(Number(p.lat),Number(p.lng)))return;const marker=L.marker([p.lat,p.lng],{icon:markerIcon(p)}).addTo(map);marker.bindPopup(`<div class="popup"><strong>${categoryInfo[p.category]?.icon||'📌'} ${escapeHtml(p.name)}</strong><div>${escapeHtml(categoryInfo[p.category]?.label||'Khác')}</div>${p.rating?`<div class="popup-rating">${ratingInfo[p.rating].icon} ${ratingInfo[p.rating].label}</div>`:''}${p.address?`<div>📍 ${escapeHtml(p.address)}</div>`:''}${p.note?`<p>${escapeHtml(p.note)}</p>`:''}${p.want?'<span>❤️ Muốn đi</span>':''}<br><button class="popup-rate" data-id="${escapeHtml(p.id)}">⭐ Đánh giá</button> <button class="popup-direction" data-lat="${p.lat}" data-lng="${p.lng}">🧭 Chỉ đường</button></div>`);marker.on('popupopen',e=>{const el=e.popup.getElement();el?.querySelector('.popup-rate')?.addEventListener('click',()=>openRating(p.id));el?.querySelector('.popup-direction')?.addEventListener('click',()=>openDirections(Number(p.lat),Number(p.lng)))});placeMarkers.set(p.id,marker)})}
 function ratingBadge(p){return p.rating?`<button type="button" class="rating-badge" data-rating-id="${p.id}">${ratingInfo[p.rating].icon} ${ratingInfo[p.rating].label}</button>`:`<button type="button" class="rating-badge unrated" data-rating-id="${p.id}">⭐ Chưa đánh giá</button>`}
-function render(){const data=filteredPlaces();els.countText.textContent=`${data.length} địa điểm`;els.placeList.innerHTML='';renderMarkers(data);if(!data.length){els.placeList.innerHTML='<div class="empty">Chưa có địa điểm phù hợp. Bấm <b>＋ Thêm địa điểm</b> hoặc nhấp đúp trên bản đồ để lưu.</div>';return}data.forEach(p=>{const icon=categoryInfo[p.category]?.icon||'📌',dist=p.distance==null?'Chưa xác định khoảng cách':`${p.distance.toFixed(1)} km từ bạn`,card=document.createElement('article');card.className='place-card';card.id=`place-${p.id}`;card.innerHTML=`<button type="button" class="place-title place-title-button" data-id="${p.id}">${icon} ${escapeHtml(p.name)}</button><div class="place-meta">${escapeHtml(categoryInfo[p.category]?.label||'Khác')} · ${dist}</div>${p.address?`<button type="button" class="place-address place-address-button" data-rating-id="${p.id}">📍 ${escapeHtml(p.address)}</button>`:''}${p.note?`<div class="place-note">${escapeHtml(p.note)}</div>`:''}${p.want?'<span class="badge">❤️ Muốn đi</span>':''}<div class="place-rating-row">${ratingBadge(p)}</div><div class="card-actions"><button type="button" class="secondary show-place" data-id="${p.id}">📍 Xem trên bản đồ</button><button type="button" class="secondary open-map" data-lat="${p.lat}" data-lng="${p.lng}">🧭 Chỉ đường</button><button type="button" class="secondary edit-place" data-id="${p.id}">✏️ Chỉnh sửa</button><button type="button" class="secondary delete-place" data-id="${p.id}">Xóa</button></div>`;els.placeList.appendChild(card)});const showPlaceOnMap=id=>{
+function render(){const data=filteredPlaces();els.countText.textContent=`${data.length} địa điểm`;els.placeList.innerHTML='';renderMarkers(data);if(!data.length){els.placeList.innerHTML='<div class="empty">Chưa có địa điểm phù hợp. Bấm <b>＋ Thêm địa điểm</b> hoặc nhấp đúp trên bản đồ để lưu.</div>';return}data.forEach(p=>{const icon=categoryInfo[p.category]?.icon||'📌',dist=p.distance==null?(currentLocation?(roadDistanceLoading?'Đang tính đường xe máy…':'Chưa xác định đường đi'):'Chưa xác định khoảng cách'):`${p.distance.toFixed(1)} km đường xe máy từ bạn`,card=document.createElement('article');card.className='place-card';card.id=`place-${p.id}`;card.innerHTML=`<button type="button" class="place-title place-title-button" data-id="${p.id}">${icon} ${escapeHtml(p.name)}</button><div class="place-meta">${escapeHtml(categoryInfo[p.category]?.label||'Khác')} · ${dist}</div>${p.address?`<button type="button" class="place-address place-address-button" data-rating-id="${p.id}">📍 ${escapeHtml(p.address)}</button>`:''}${p.note?`<div class="place-note">${escapeHtml(p.note)}</div>`:''}${p.want?'<span class="badge">❤️ Muốn đi</span>':''}<div class="place-rating-row">${ratingBadge(p)}</div><div class="card-actions"><button type="button" class="secondary show-place" data-id="${p.id}">📍 Xem trên bản đồ</button><button type="button" class="secondary open-map" data-lat="${p.lat}" data-lng="${p.lng}">🧭 Chỉ đường</button><button type="button" class="secondary edit-place" data-id="${p.id}">✏️ Chỉnh sửa</button><button type="button" class="secondary delete-place" data-id="${p.id}">Xóa</button></div>`;els.placeList.appendChild(card)});const showPlaceOnMap=id=>{
   const p=places.find(x=>x.id===id);
   if(p){
     map.setView([p.lat,p.lng],18,{animate:true});
@@ -62,7 +112,7 @@ els.placeList.querySelectorAll('.rating-badge').forEach(b=>b.onclick=()=>openRat
 els.placeList.querySelectorAll('.place-card').forEach(card=>card.onclick=e=>{
   if(e.target.closest('.rating-badge,.show-place,.open-map,.edit-place,.delete-place,button,a,input,select,textarea'))return;
   showPlaceOnMap(card.id.replace(/^place-/,''));
-});els.placeList.querySelectorAll('.show-place').forEach(b=>b.onclick=()=>{const p=places.find(x=>x.id===b.dataset.id);if(p){map.setView([p.lat,p.lng],18,{animate:true});placeMarkers.get(p.id)?.openPopup()}});els.placeList.querySelectorAll('.open-map').forEach(b=>b.onclick=()=>openDirections(Number(b.dataset.lat),Number(b.dataset.lng)));els.placeList.querySelectorAll('.edit-place').forEach(b=>b.onclick=()=>openEditDialog(b.dataset.id));els.placeList.querySelectorAll('.delete-place').forEach(b=>b.onclick=async()=>{const id=b.dataset.id;try{await api(`/api/places/${encodeURIComponent(id)}`,{method:'DELETE'})}catch(_){}places=places.filter(p=>p.id!==id);savePlaces();render()})}
+});els.placeList.querySelectorAll('.show-place').forEach(b=>b.onclick=()=>{const p=places.find(x=>x.id===b.dataset.id);if(p){map.setView([p.lat,p.lng],18,{animate:true});placeMarkers.get(p.id)?.openPopup()}});els.placeList.querySelectorAll('.open-map').forEach(b=>b.onclick=()=>openDirections(Number(b.dataset.lat),Number(b.dataset.lng)));els.placeList.querySelectorAll('.edit-place').forEach(b=>b.onclick=()=>openEditDialog(b.dataset.id));els.placeList.querySelectorAll('.delete-place').forEach(b=>b.onclick=async()=>{const id=b.dataset.id;try{await api(`/api/places/${encodeURIComponent(id)}`,{method:'DELETE'})}catch(_){}places=places.filter(p=>p.id!==id);savePlaces();render();if(currentLocation)updateRoadDistances()})}
 function initMap(){map=L.map('map',{zoomControl:true}).setView([10.7769,106.7009],13);window.__myPlaceMapMain=map;L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'&copy; OpenStreetMap contributors'}).addTo(map);map.doubleClickZoom.disable();map.on('dblclick',e=>{L.DomEvent.stop(e);openAddDialog(e.latlng.lat,e.latlng.lng);reverseGeocode(e.latlng.lat,e.latlng.lng,true)})}
 async function nominatimSearch(q){const u=new URL(`${GEOCODER}/search`);u.searchParams.set('format','jsonv2');u.searchParams.set('limit','8');u.searchParams.set('countrycodes','vn');u.searchParams.set('addressdetails','1');u.searchParams.set('q',q);const r=await fetch(u,{headers:{Accept:'application/json'}});if(!r.ok)throw Error();return r.json()}
 async function arcgisSearch(q){const u=new URL(ARCGIS);u.searchParams.set('SingleLine',q);u.searchParams.set('f','json');u.searchParams.set('maxLocations','8');u.searchParams.set('outFields','*');const r=await fetch(u);if(!r.ok)throw Error();const d=await r.json();return(d.candidates||[]).map(x=>({display_name:x.address,lat:Number(x.location?.y),lon:Number(x.location?.x)})).filter(x=>validCoord(x.lat,x.lon))}
@@ -164,7 +214,7 @@ async function savePlace(e){
 }
 function openRating(id){const p=places.find(x=>x.id===id);if(!p||!els.ratingDialog)return;ratingPlaceId=id;els.ratingName.textContent=p.name;els.ratingAddress.textContent=p.address||`${p.lat}, ${p.lng}`;els.ratingError.textContent='';els.ratingOptions.querySelectorAll('[data-rating]').forEach(b=>b.classList.toggle('selected',b.dataset.rating===p.rating));els.ratingDialog.showModal()}
 async function setRating(rating){const p=places.find(x=>x.id===ratingPlaceId);if(!p)return;els.ratingError.textContent='⏳ Đang lưu...';try{await api(`/api/places/${encodeURIComponent(p.id)}`,{method:'PATCH',body:JSON.stringify({rating})});p.rating=rating;savePlaces();els.ratingDialog.close();render();map.setView([p.lat,p.lng],18,{animate:true});placeMarkers.get(p.id)?.openPopup()}catch(_){els.ratingError.textContent='Không lưu được đánh giá. Kiểm tra lại kết nối.'}}
-function setCurrentLocation(lat,lng,accuracy){currentLocation={lat,lng};if(userMarker)userMarker.setLatLng([lat,lng]);else userMarker=L.circleMarker([lat,lng],{radius:8,color:'#fff',weight:3,fillColor:'#1976d2',fillOpacity:1}).addTo(map).bindTooltip('Vị trí của bạn');if(userAccuracy)userAccuracy.remove();if(accuracy>0)userAccuracy=L.circle([lat,lng],{radius:accuracy,color:'#1976d2',weight:1,fillOpacity:.08}).addTo(map);map.setView([lat,lng],15);els.mapHint.textContent='📍 Đã xác định vị trí của bạn. Nhấp đúp trên bản đồ để thêm địa điểm.';render()}
+function setCurrentLocation(lat,lng,accuracy){currentLocation={lat,lng};roadDistances.clear();if(userMarker)userMarker.setLatLng([lat,lng]);else userMarker=L.circleMarker([lat,lng],{radius:8,color:'#fff',weight:3,fillColor:'#1976d2',fillOpacity:1}).addTo(map).bindTooltip('Vị trí của bạn');if(userAccuracy)userAccuracy.remove();if(accuracy>0)userAccuracy=L.circle([lat,lng],{radius:accuracy,color:'#1976d2',weight:1,fillOpacity:.08}).addTo(map);map.setView([lat,lng],15);els.mapHint.textContent='📍 Đã xác định vị trí của bạn. Khoảng cách đang tính theo đường xe máy.';render();updateRoadDistances()}
 function useLocation(){
   if(!navigator.geolocation){
     els.mapHint.textContent='⚠️ Trình duyệt không hỗ trợ định vị.';
