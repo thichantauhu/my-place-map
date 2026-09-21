@@ -89,9 +89,8 @@ async function updateRoadDistances(){
       units:'kilometers',
       verbose:true
     };
-    const url=new URL('https://valhalla.openstreetmap.de/sources_to_targets');
-    url.searchParams.set('json',JSON.stringify(payload));
-    const res=await fetch(url.toString(),{method:'GET',headers:{Accept:'application/json'}});
+    const url='/api/road-distance?payload='+encodeURIComponent(JSON.stringify(payload));
+    const res=await fetch(url,{headers:{Accept:'application/json'}});
     if(!res.ok)throw new Error('routing');
     const data=await res.json();
     const rows=data?.sources_to_targets?.[0];
