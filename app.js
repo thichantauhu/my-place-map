@@ -82,16 +82,18 @@ async function updateRoadDistances(){
   roadDistanceLoading=true;
   render();
   try{
-    const res=await fetch('https://valhalla.openstreetmap.de/sources_to_targets',{
-      method:'POST',
-      headers:{'Content-Type':'application/json','Accept':'application/json'},
-      body:JSON.stringify({
-        sources:[{lat:currentLocation.lat,lon:currentLocation.lng}],
-        targets,
-        costing:'motorcycle',
-        units:'kilometers',
-        verbose:false
-      })
+    const payload={
+      sources:[{lat:currentLocation.lat,lon:currentLocation.lng}],
+      targets,
+      costing:'motorcycle',
+      units:'kilometers',
+      verbose:false
+    };
+    const url=new URL('https://valhalla1.openstreetmap.de/sources_to_targets');
+    url.searchParams.set('json',JSON.stringify(payload));
+    const res=await fetch(url,{
+      method:'GET',
+      headers:{Accept:'application/json','X-Client-Id':'my-place-map'}
     });
     if(!res.ok)throw new Error('routing');
     const data=await res.json();
