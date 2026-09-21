@@ -149,19 +149,35 @@ async function handlePlaces(req, res, url) {
 
 async function roadDistance(req, res, url) {
   try {
-    const raw=url.searchParams.get('payload');
-    if(!raw) return send(res,400,{error:'MISSING_PAYLOAD'});
-    const payload=JSON.parse(raw);
-    if(!payload?.sources?.length||!payload?.targets?.length) return send(res,400,{error:'INVALID_PAYLOAD'});
+    let payload;
+    if (req.method === 'POST') {
+      payload = await readBody(req);
+    } else {
+      const raw = url.searchParams.get('payload');
+      if (!raw) return send(res,400,{error:'MISSING_PAYLOAD'});
+      payload = JSON.parse(raw);
+    }
+    if (!payload?.sources?.length || !payload?.targets?.length) {
+      return send(res,400,{error:'INVALID_PAYLOAD'});
+    }
     payload.costing='motor_scooter';
     payload.units='kilometers';
+    payload.verbose=true;
     const response=await fetch('https://valhalla1.openstreetmap.de/sources_to_targets',{
       method:'POST',
-      headers:{'Content-Type':'application/json',Accept:'application/json','User-Agent':'my-place-map/1.0'},
+      headers:{
+        'Content-Type':'application/json',
+        Accept:'application/json',
+        'User-Agent':'my-place-map/1.0',
+        'X-Client-Id':'my-place-map.onrender.com'
+      },
       body:JSON.stringify(payload)
     });
     const data=await response.json().catch(()=>({}));
-    if(!response.ok) return send(res,response.status,{error:'ROUTING_ERROR',details:data});
+    if(!response.ok) {
+      console.error('Valhalla routing error:',response.status,data);
+      return send(res,response.status,{error:'ROUTING_ERROR',details:data});
+    }
     return send(res,200,data);
   } catch(error) {
     console.error('Road distance error:',error);
@@ -172,8 +188,8 @@ async function roadDistance(req, res, url) {
 async function handleApi(req, res, url) {
   const placesHandled = await handlePlaces(req, res, url);
   if (placesHandled !== false) return true;
+  if (url.pathname === '/api/road-distance' && (req.method === 'GET' || req.method === 'POST')) return roadDistance(req,res,url);
   if (req.method !== 'GET') return false;
-  if (url.pathname === '/api/road-distance') return roadDistance(req,res,url);
   if (url.pathname === '/api/address-search') {
     const q=(url.searchParams.get('q')||'').trim(), sessionToken=(url.searchParams.get('sessionToken')||'').trim();
     if (!q) return send(res,400,{error:'EMPTY_QUERY',message:'Thiếu địa chỉ cần tìm.'});
