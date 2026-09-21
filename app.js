@@ -89,8 +89,11 @@ async function updateRoadDistances(){
       units:'kilometers',
       verbose:true
     };
-    const url='/api/road-distance?payload='+encodeURIComponent(JSON.stringify(payload));
-    const res=await fetch(url,{headers:{Accept:'application/json'}});
+    const res=await fetch('/api/road-distance',{
+      method:'POST',
+      headers:{'Content-Type':'application/json',Accept:'application/json'},
+      body:JSON.stringify(payload)
+    });
     if(!res.ok)throw new Error('routing');
     const data=await res.json();
     const rows=data?.sources_to_targets?.[0];
@@ -117,8 +120,7 @@ function render(){const data=filteredPlaces();els.countText.textContent=`${data.
   if(p){
     map.setView([p.lat,p.lng],18,{animate:true});
     setTimeout(()=>placeMarkers.get(p.id)?.openPopup(),250);
-  }
-};
+  }};
 els.placeList.querySelectorAll('.place-title-button').forEach(b=>b.onclick=()=>showPlaceOnMap(b.dataset.id));
 els.placeList.querySelectorAll('.place-address-button').forEach(b=>b.onclick=()=>showPlaceOnMap(b.dataset.ratingId));
 els.placeList.querySelectorAll('.rating-badge').forEach(b=>b.onclick=()=>openRating(b.dataset.ratingId));
@@ -168,7 +170,7 @@ async function savePlace(e){
   els.error.textContent='';
   const name=els.name.value.trim(),c=readCoords();
   if(!name){els.error.textContent='Hãy nhập tên địa điểm.';return}
-  if(!c){els.error.textContent='Hãy dán tọa độ theo dạng: Vĩ độ, Kinh độ (ví dụ 10.800829838769747, 106.68482208597538).';return}
+  if(!c){els.error.textContent='Hãy nhập Lat,Lng hoặc Full Plus Code (ví dụ 10.800829838769747, 106.68482208597538 hoặc 7P28QMV5+CR).';return}
   const address=els.address.value.trim();
   const duplicate=places.some(p=>p.id!==editingPlaceId&&p.name.trim().toLowerCase()===name.toLowerCase()&&Math.abs(Number(p.lat)-c.lat)<1e-12&&Math.abs(Number(p.lng)-c.lng)<1e-12);
   if(duplicate){els.error.textContent='Địa điểm này đã tồn tại.';return}
@@ -237,8 +239,7 @@ function useLocation(){
   }
   if(!window.isSecureContext){
     els.mapHint.textContent='⚠️ Trang chưa chạy HTTPS nên không thể lấy vị trí.';
-    return;
-  }
+    return;  }
   els.locate.disabled=true;
   els.locate.textContent='⌛ Đang định vị...';
   navigator.geolocation.getCurrentPosition(
