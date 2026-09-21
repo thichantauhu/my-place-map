@@ -147,10 +147,33 @@ async function handlePlaces(req, res, url) {
   }
 }
 
+async function roadDistance(req, res, url) {
+  try {
+    const raw=url.searchParams.get('payload');
+    if(!raw) return send(res,400,{error:'MISSING_PAYLOAD'});
+    const payload=JSON.parse(raw);
+    if(!payload?.sources?.length||!payload?.targets?.length) return send(res,400,{error:'INVALID_PAYLOAD'});
+    payload.costing='motorcycle';
+    payload.units='kilometers';
+    const response=await fetch('https://valhalla1.openstreetmap.de/sources_to_targets',{
+      method:'POST',
+      headers:{'Content-Type':'application/json',Accept:'application/json','User-Agent':'my-place-map/1.0'},
+      body:JSON.stringify(payload)
+    });
+    const data=await response.json().catch(()=>({}));
+    if(!response.ok) return send(res,response.status,{error:'ROUTING_ERROR',details:data});
+    return send(res,200,data);
+  } catch(error) {
+    console.error('Road distance error:',error);
+    return send(res,502,{error:'ROUTING_UNAVAILABLE',message:error.message});
+  }
+}
+
 async function handleApi(req, res, url) {
   const placesHandled = await handlePlaces(req, res, url);
   if (placesHandled !== false) return true;
   if (req.method !== 'GET') return false;
+  if (url.pathname === '/api/road-distance') return roadDistance(req,res,url);
   if (url.pathname === '/api/address-search') {
     const q=(url.searchParams.get('q')||'').trim(), sessionToken=(url.searchParams.get('sessionToken')||'').trim();
     if (!q) return send(res,400,{error:'EMPTY_QUERY',message:'Thiếu địa chỉ cần tìm.'});
