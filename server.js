@@ -153,7 +153,7 @@ async function roadDistance(req, res, url) {
     if(!raw) return send(res,400,{error:'MISSING_PAYLOAD'});
     const payload=JSON.parse(raw);
     if(!payload?.sources?.length||!payload?.targets?.length) return send(res,400,{error:'INVALID_PAYLOAD'});
-    payload.costing='motorcycle';
+    payload.costing='motor_scooter';
     payload.units='kilometers';
     const response=await fetch('https://valhalla1.openstreetmap.de/sources_to_targets',{
       method:'POST',
