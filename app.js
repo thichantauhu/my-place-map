@@ -77,33 +77,22 @@ function filteredPlaces(){
 }
 async function updateRoadDistances(){
   if(!currentLocation||!places.length)return;
-  const targets=places.filter(p=>validCoord(Number(p.lat),Number(p.lng))).map(p=>({lat:Number(p.lat),lon:Number(p.lng)}));
-  if(!targets.length)return;
+  const validPlaces=places.filter(p=>validCoord(Number(p.lat),Number(p.lng)));
+  if(!validPlaces.length)return;
   roadDistanceLoading=true;
   render();
   try{
-    const payload={
-      sources:[{lat:currentLocation.lat,lon:currentLocation.lng}],
-      targets,
-      costing:'motorcycle',
-      units:'kilometers',
-      verbose:false
-    };
-    const url=new URL('https://valhalla1.openstreetmap.de/sources_to_targets');
-    url.searchParams.set('json',JSON.stringify(payload));
-    const res=await fetch(url,{
-      method:'GET',
-      headers:{Accept:'application/json','X-Client-Id':'my-place-map'}
-    });
+    const coords=[`${currentLocation.lng},${currentLocation.lat}`,...validPlaces.map(p=>`${Number(p.lng)},${Number(p.lat)}`)].join(';');
+    const url=`https://router.project-osrm.org/table/v1/driving/${coords}?sources=0&annotations=distance`;
+    const res=await fetch(url,{headers:{Accept:'application/json'}});
     if(!res.ok)throw new Error('routing');
     const data=await res.json();
-    const distances=data?.sources_to_targets?.distances?.[0];
+    const distances=data?.distances?.[0];
     if(!Array.isArray(distances))throw new Error('no distances');
     roadDistances.clear();
-    let i=0;
-    places.filter(p=>validCoord(Number(p.lat),Number(p.lng))).forEach(p=>{
-      const d=Number(distances[i++]);
-      if(Number.isFinite(d))roadDistances.set(p.id,d);
+    validPlaces.forEach((p,i)=>{
+      const meters=Number(distances[i+1]);
+      if(Number.isFinite(meters))roadDistances.set(p.id,meters/1000);
     });
   }catch(_){
     roadDistances.clear();
