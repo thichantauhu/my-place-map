@@ -85,7 +85,7 @@ async function updateRoadDistances(){
     const payload={
       sources:[{lat:Number(currentLocation.lat),lon:Number(currentLocation.lng)}],
       targets:validPlaces.map(p=>({lat:Number(p.lat),lon:Number(p.lng)})),
-      costing:'motorcycle',
+      costing:'motor_scooter',
       units:'kilometers',
       verbose:true
     };
