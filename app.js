@@ -82,17 +82,24 @@ async function updateRoadDistances(){
   roadDistanceLoading=true;
   render();
   try{
-    const coords=[`${currentLocation.lng},${currentLocation.lat}`,...validPlaces.map(p=>`${Number(p.lng)},${Number(p.lat)}`)].join(';');
-    const url=`https://router.project-osrm.org/table/v1/driving/${coords}?sources=0&annotations=distance`;
-    const res=await fetch(url,{headers:{Accept:'application/json'}});
+    const payload={
+      sources:[{lat:Number(currentLocation.lat),lon:Number(currentLocation.lng)}],
+      targets:validPlaces.map(p=>({lat:Number(p.lat),lon:Number(p.lng)})),
+      costing:'motorcycle',
+      units:'kilometers',
+      verbose:true
+    };
+    const url=new URL('https://valhalla.openstreetmap.de/sources_to_targets');
+    url.searchParams.set('json',JSON.stringify(payload));
+    const res=await fetch(url.toString(),{method:'GET',headers:{Accept:'application/json'}});
     if(!res.ok)throw new Error('routing');
     const data=await res.json();
-    const distances=data?.distances?.[0];
-    if(!Array.isArray(distances))throw new Error('no distances');
+    const rows=data?.sources_to_targets?.[0];
+    if(!Array.isArray(rows))throw new Error('no distances');
     roadDistances.clear();
     validPlaces.forEach((p,i)=>{
-      const meters=Number(distances[i+1]);
-      if(Number.isFinite(meters))roadDistances.set(p.id,meters/1000);
+      const d=Number(rows[i]?.distance);
+      if(Number.isFinite(d))roadDistances.set(p.id,d);
     });
   }catch(_){
     roadDistances.clear();
