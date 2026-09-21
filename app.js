@@ -8,7 +8,23 @@ const categoryInfo={food:{icon:'🍜',label:'Ăn uống'},fun:{icon:'🎮',label
 const ratingInfo={like:{icon:'❤️',label:'Thích'},neutral:{icon:'🙂',label:'Bình thường'},dislike:{icon:'👿',label:'Không thích'}};
 let ratingPlaceId=null,editingPlaceId=null;
 function validCoord(lat,lng){return Number.isFinite(lat)&&Number.isFinite(lng)&&lat>=-90&&lat<=90&&lng>=-180&&lng<=180}
-function parseCoords(text){const m=String(text||'').trim().replace(/\s+/g,' ').match(/^([+-]?(?:\d+(?:\.\d*)?|\.\d+))\s*,\s*([+-]?(?:\d+(?:\.\d*)?|\.\d+))$/);if(!m)return null;const lat=Number(m[1]),lng=Number(m[2]);return validCoord(lat,lng)?{lat,lng}:null}
+function parseCoords(text){
+  const raw=String(text||'').trim();
+  const m=raw.replace(/\s+/g,' ').match(/^([+-]?(?:\d+(?:\.\d*)?|\.\d+))\s*,\s*([+-]?(?:\d+(?:\.\d*)?|\.\d+))$/);
+  if(m){
+    const lat=Number(m[1]),lng=Number(m[2]);
+    return validCoord(lat,lng)?{lat,lng}:null;
+  }
+  const code=raw.replace(/\s+/g,'').toUpperCase();
+  try{
+    if(window.OpenLocationCode?.isFull?.(code) && window.OpenLocationCode?.isValid?.(code)){
+      const area=window.OpenLocationCode.decode(code);
+      const lat=Number(area.latitudeCenter),lng=Number(area.longitudeCenter);
+      return validCoord(lat,lng)?{lat,lng}:null;
+    }
+  }catch(_){}
+  return null;
+}
 function syncCoords(lat,lng){if(!validCoord(lat,lng))return false;els.coord.value=`${lat}, ${lng}`;els.lat.value=String(lat);els.lng.value=String(lng);els.selectedLocation.textContent=`📍 Đã chọn: ${lat.toFixed(6)}, ${lng.toFixed(6)}`;return true}
 function readCoords(){const c=parseCoords(els.coord.value);if(c){syncCoords(c.lat,c.lng);return c}const lat=Number(els.lat.value),lng=Number(els.lng.value);return validCoord(lat,lng)?{lat,lng}:null}
 function normalizePlace(p){return{id:String(p.id),name:String(p.name||''),address:String(p.address||''),category:String(p.category||'food'),note:String(p.note||''),link:String(p.link||''),lat:Number(p.lat),lng:Number(p.lng),want:Boolean(p.want),rating:['like','neutral','dislike'].includes(p.rating)?p.rating:null,createdAt:Number(p.createdAt??p.created_at??Date.now())}}
