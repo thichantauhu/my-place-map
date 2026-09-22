@@ -156,6 +156,42 @@ async function handlePlaces(req, res, url) {
   }
 }
 
+async function valhallaMatrix(payload) {
+  const requestPayload = {
+    ...payload,
+    costing: 'motor_scooter',
+    units: 'kilometers',
+    verbose: true
+  };
+  const response = await fetch('https://valhalla1.openstreetmap.de/sources_to_targets', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+      'User-Agent': 'my-place-map/1.0',
+      'X-Client-Id': 'my-place-map.onrender.com'
+    },
+    body: JSON.stringify(requestPayload)
+  });
+  const data = await response.json().catch(() => ({}));
+  if (response.ok) return data;
+
+  // Valhalla rejects a matrix when any route exceeds its 100 km path limit.
+  // Split targets recursively so one far-away place cannot invalidate
+  // all nearby distances.
+  if (data?.error_code === 154 && requestPayload.targets.length > 1) {
+    const mid = Math.ceil(requestPayload.targets.length / 2);
+    const left = await valhallaMatrix({...requestPayload, targets: requestPayload.targets.slice(0, mid)});
+    const right = await valhallaMatrix({...requestPayload, targets: requestPayload.targets.slice(mid)});
+    const leftRows = left?.sources_to_targets?.[0] || [];
+    const rightRows = right?.sources_to_targets?.[0] || [];
+    return {sources_to_targets: [[...leftRows, ...rightRows]]};
+  }
+
+  console.error('Valhalla routing error:', response.status, data);
+  return {sources_to_targets: [[]], routing_errors: [data]};
+}
+
 async function roadDistance(req, res, url) {
   try {
     let payload;
@@ -169,31 +205,16 @@ async function roadDistance(req, res, url) {
     if (!payload?.sources?.length || !payload?.targets?.length) {
       return send(res,400,{error:'INVALID_PAYLOAD'});
     }
-    payload.costing='motor_scooter';
-    payload.units='kilometers';
-    payload.verbose=true;
-    const response=await fetch('https://valhalla1.openstreetmap.de/sources_to_targets',{
-      method:'POST',
-      headers:{
-        'Content-Type':'application/json',
-        Accept:'application/json',
-        'User-Agent':'my-place-map/1.0',
-        'X-Client-Id':'my-place-map.onrender.com'
-      },
-      body:JSON.stringify(payload)
-    });
-    const data=await response.json().catch(()=>({}));
-    if(!response.ok) {
-      console.error('Valhalla routing error:',response.status,data);
-      return send(res,response.status,{error:'ROUTING_ERROR',details:data});
+    if (!payload.sources.every(p => Number.isFinite(Number(p.lat)) && Number.isFinite(Number(p.lon))) ||
+        !payload.targets.every(p => Number.isFinite(Number(p.lat)) && Number.isFinite(Number(p.lon)))) {
+      return send(res,400,{error:'INVALID_COORDINATES'});
     }
-    return send(res,200,data);
+    return send(res,200,await valhallaMatrix(payload));
   } catch(error) {
     console.error('Road distance error:',error);
     return send(res,502,{error:'ROUTING_UNAVAILABLE',message:error.message});
   }
 }
-
 async function handleApi(req, res, url) {
   const placesHandled = await handlePlaces(req, res, url);
   if (placesHandled !== false) return true;
