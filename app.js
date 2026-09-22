@@ -56,7 +56,7 @@ async function api(path,options={}){
   if(method==='PATCH') return {place:Array.isArray(data)?data[0]:data};
   return data;
 }
-async function syncRemote(){try{const data=await api('/api/places');const remote=Array.isArray(data.places)?data.places.map(normalizePlace):[];places=remote;savePlaces();render()}catch(_){}
+async function syncRemote(){try{const data=await api('/api/places');const remote=Array.isArray(data.places)?data.places.map(normalizePlace):[];places=remote;savePlaces();render();if(currentLocation)updateRoadDistances()}catch(_){}
 }
 function distanceKm(aLat,aLng,bLat,bLng){const R=6371,p1=aLat*Math.PI/180,p2=bLat*Math.PI/180,dp=(bLat-aLat)*Math.PI/180,dl=(bLng-aLng)*Math.PI/180,x=Math.sin(dp/2)**2+Math.cos(p1)*Math.cos(p2)*Math.sin(dl/2)**2;return 2*R*Math.asin(Math.sqrt(x))}
 function filteredPlaces(){
@@ -210,6 +210,7 @@ async function savePlace(e){
       closePlaceDialog();
       render();
       map.setView([c.lat,c.lng],18,{animate:true});
+      if(currentLocation)updateRoadDistances();
       els.mapHint.textContent='✏️ Đã cập nhật toàn bộ thông tin địa điểm.';
     }else{
       const place=normalizePlace({id:window.crypto?.randomUUID?.()||`${Date.now()}-${Math.random()}`,name,address,category:els.category.value,note:els.note.value.trim(),link:els.link.value.trim(),lat:c.lat,lng:c.lng,want:els.want.checked,rating:null,createdAt:Date.now()});
@@ -219,6 +220,7 @@ async function savePlace(e){
       closePlaceDialog();
       render();
       map.setView([c.lat,c.lng],18,{animate:true});
+      if(currentLocation)updateRoadDistances();
       els.mapHint.textContent='📍 Đã lưu địa điểm tại đúng tọa độ Google Maps.';
     }
     savePlaces();
