@@ -86,7 +86,7 @@ function normalizeRating(value) {
 function normalizePlace(p) {
   return {
     id: String(p.id), name: String(p.name || ''), address: String(p.address || ''),
-    category: String(p.category || 'food'), note: String(p.note || ''), lat: Number(p.lat), lng: Number(p.lng),
+    category: String(p.category || 'food'), note: String(p.note || ''), link: String(p.link || ''), lat: Number(p.lat), lng: Number(p.lng),
     want: Boolean(p.want), rating: normalizeRating(p.rating), createdAt: Number(p.createdAt ?? p.created_at ?? Date.now())
   };
 }
@@ -114,7 +114,7 @@ async function handlePlaces(req, res, url) {
     if (req.method === 'POST' && url.pathname === '/api/places') {
       const p = normalizePlace(await readBody(req));
       if (!p.id || !p.name || !Number.isFinite(p.lat) || !Number.isFinite(p.lng)) return send(res, 400, {error: 'INVALID_PLACE', message: 'Dữ liệu địa điểm không hợp lệ.'});
-      const row = {id:p.id,name:p.name,address:p.address,category:p.category,note:p.note,lat:p.lat,lng:p.lng,want:p.want,rating:p.rating,created_at:p.createdAt};
+      const row = {id:p.id,name:p.name,address:p.address,category:p.category,note:p.note,link:p.link,lat:p.lat,lng:p.lng,want:p.want,rating:p.rating,created_at:p.createdAt};
       const rows = await supabaseRequest('POST', 'places', [row]);
       return send(res, 201, {place: normalizePlace(Array.isArray(rows) ? rows[0] : row)});
     }
@@ -131,6 +131,15 @@ async function handlePlaces(req, res, url) {
       if (Object.prototype.hasOwnProperty.call(body, 'address')) {
         update.address = String(body.address || '').trim();
       }
+      if (Object.prototype.hasOwnProperty.call(body, 'name')) update.name = String(body.name || '').trim();
+      if (Object.prototype.hasOwnProperty.call(body, 'category')) update.category = String(body.category || 'food');
+      if (Object.prototype.hasOwnProperty.call(body, 'note')) update.note = String(body.note || '').trim();
+      if (Object.prototype.hasOwnProperty.call(body, 'link')) update.link = String(body.link || '').trim();
+      if (Object.prototype.hasOwnProperty.call(body, 'lat')) update.lat = Number(body.lat);
+      if (Object.prototype.hasOwnProperty.call(body, 'lng')) update.lng = Number(body.lng);
+      if (Object.prototype.hasOwnProperty.call(body, 'want')) update.want = Boolean(body.want);
+      if (Object.prototype.hasOwnProperty.call(body, 'lat') && !Number.isFinite(update.lat)) return send(res,400,{error:'INVALID_LAT',message:'Vĩ độ không hợp lệ.'});
+      if (Object.prototype.hasOwnProperty.call(body, 'lng') && !Number.isFinite(update.lng)) return send(res,400,{error:'INVALID_LNG',message:'Kinh độ không hợp lệ.'});
       if (!Object.keys(update).length) return send(res, 400, {error:'EMPTY_UPDATE', message:'Không có nội dung cần cập nhật.'});
       const rows = await supabaseRequest('PATCH', `places?id=eq.${encodeURIComponent(match[1])}`, update);
       const row = Array.isArray(rows) ? rows[0] : null;
