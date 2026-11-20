@@ -10,18 +10,34 @@ let ratingPlaceId=null,editingPlaceId=null;
 function validCoord(lat,lng){return Number.isFinite(lat)&&Number.isFinite(lng)&&lat>=-90&&lat<=90&&lng>=-180&&lng<=180}
 function parseCoords(text){
   const raw=String(text||'').trim();
-  const m=raw.replace(/\s+/g,' ').match(/^([+-]?(?:\d+(?:\.\d*)?|\.\d+))\s*,\s*([+-]?(?:\d+(?:\.\d*)?|\.\d+))$/);
+  const m=raw.replace(/\\s+/g,' ').match(/^([+-]?(?:\\d+(?:\\.\\d*)?|\\.\\d+))\\s*,\\s*([+-]?(?:\\d+(?:\\.\\d*)?|\\.\\d+))$/);
   if(m){
     const lat=Number(m[1]),lng=Number(m[2]);
     return validCoord(lat,lng)?{lat,lng}:null;
   }
-  const code=raw.replace(/\s+/g,'').toUpperCase();
+  const code=raw.replace(/\\s+/g,'').toUpperCase();
   try{
     if(window.OpenLocationCode?.isFull?.(code) && window.OpenLocationCode?.isValid?.(code)){
       const area=window.OpenLocationCode.decode(code);
       const lat=Number(area.latitudeCenter),lng=Number(area.longitudeCenter);
       return validCoord(lat,lng)?{lat,lng}:null;
     }
+  }catch(_){}
+  return null;
+}
+function extractCoordsFromMapsUrl(value){
+  try{
+    const u=new URL(value);
+    const text=decodeURIComponent(u.href);
+    let m=text.match(/@(-?\\d+(?:\\.\\d+)?),\\s*(-?\\d+(?:\\.\\d+)?)/);
+    if(!m)m=text.match(/!3d(-?\\d+(?:\\.\\d+)?)!4d(-?\\d+(?:\\.\\d+)?)/);
+    if(!m){
+      for(const key of ['q','query','ll','center','destination']){
+        const v=u.searchParams.get(key);
+        if(v){m=v.match(/(-?\\d+(?:\\.\\d+)?)\\s*,\\s*(-?\\d+(?:\\.\\d+)?)/);if(m)break}
+      }
+    }
+    if(m){const lat=Number(m[1]),lng=Number(m[2]);if(validCoord(lat,lng))return{lat,lng}}
   }catch(_){}
   return null;
 }
@@ -268,6 +284,27 @@ function useLocation(){
   );
 }
 
+let mapsResolveBusy=false;
+async function resolveMapsInput(){
+  const value=els.coord.value.trim();
+  if(!/^https?:\\/\\//i.test(value)||mapsResolveBusy)return;
+  const direct=extractCoordsFromMapsUrl(value);
+  if(direct){syncCoords(direct.lat,direct.lng);els.error.textContent='';return}
+  mapsResolveBusy=true;
+  els.selectedLocation.textContent='⏳ Đang lấy tọa độ từ Google Maps...';
+  try{
+    const response=await fetch('/api/google-maps-coords?url='+encodeURIComponent(value),{headers:{Accept:'application/json'}});
+    const data=await response.json();
+    if(!response.ok||!validCoord(Number(data.lat),Number(data.lng)))throw new Error(data.message||'Không đọc được tọa độ từ link này.');
+    syncCoords(Number(data.lat),Number(data.lng));
+    els.error.textContent='';
+  }catch(error){
+    els.selectedLocation.textContent='Không lấy được tọa độ từ link. Hãy dùng link Chia sẻ Google Maps hoặc dán Lat,Lng.';
+    els.error.textContent=error.message||'Không đọc được link Google Maps.';
+  }finally{mapsResolveBusy=false}
+}
+els.coord.addEventListener('blur',resolveMapsInput);
+els.coord.addEventListener('paste',()=>setTimeout(resolveMapsInput,80));
 els.add.onclick=()=>openAddDialog();els.closePlace.onclick=closePlaceDialog;els.cancelPlace.onclick=closePlaceDialog;els.form.addEventListener('submit',savePlace);els.searchAddress.onclick=searchAddress;els.pickLocation.onclick=openPicker;els.closePicker.onclick=closePicker;els.confirmPicker.onclick=confirmPicker;els.locate.onclick=useLocation;els.radius.onchange=render;
 document.querySelectorAll('.chip').forEach(b=>b.onclick=()=>{document.querySelectorAll('.chip').forEach(x=>x.classList.remove('active'));b.classList.add('active');activeFilter=b.dataset.filter;render()});
 els.ratingOptions?.querySelectorAll('[data-rating]').forEach(b=>b.onclick=()=>{const p=places.find(x=>x.id===ratingPlaceId);setRating(p?.rating===b.dataset.rating?null:b.dataset.rating)});els.closeRating?.addEventListener('click',()=>els.ratingDialog.close());
