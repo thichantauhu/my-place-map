@@ -215,9 +215,70 @@ async function roadDistance(req, res, url) {
     return send(res,502,{error:'ROUTING_UNAVAILABLE',message:error.message});
   }
 }
+function coordsFromMapsUrl(value) {
+  try {
+    const u = new URL(value);
+    const host = u.hostname.toLowerCase();
+    if (!(host === 'maps.app.goo.gl' || host === 'goo.gl' || host === 'google.com' || host.endsWith('.google.com') || host === 'maps.google.com')) return null;
+    const text = decodeURIComponent(u.href);
+    let m = text.match(/@(-?\\d+(?:\\.\\d+)?),\\s*(-?\\d+(?:\\.\\d+)?)/);
+    if (!m) m = text.match(/!3d(-?\\d+(?:\\.\\d+)?)!4d(-?\\d+(?:\\.\\d+)?)/);
+    if (!m) {
+      for (const key of ['q','query','ll','center','destination']) {
+        const v = u.searchParams.get(key);
+        if (v) { m = v.match(/(-?\\d+(?:\\.\\d+)?)\\s*,\\s*(-?\\d+(?:\\.\\d+)?)/); if (m) break; }
+      }
+    }
+    if (!m) return null;
+    const lat = Number(m[1]), lng = Number(m[2]);
+    return Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180 ? {lat,lng} : null;
+  } catch (_) { return null; }
+}
+
+async function googleMapsCoords(res, url) {
+  const raw = (url.searchParams.get('url') || '').trim();
+  if (!raw || raw.length > 2048) return send(res,400,{error:'INVALID_MAPS_URL',message:'Link Google Maps không hợp lệ.'});
+  try {
+    const parsed = new URL(raw);
+    const host = parsed.hostname.toLowerCase();
+    if (!(host === 'maps.app.goo.gl' || host === 'goo.gl' || host === 'google.com' || host.endsWith('.google.com') || host === 'maps.google.com')) {
+      return send(res,400,{error:'UNSUPPORTED_URL',message:'Chỉ hỗ trợ link Google Maps.'});
+    }
+    let current = raw;
+    for (let i=0; i<6; i++) {
+      const found = coordsFromMapsUrl(current);
+      if (found) return send(res,200,found);
+      const response = await fetch(current,{redirect:'manual',headers:{'User-Agent':'Mozilla/5.0 (compatible; MyPlaceMap/1.0)','Accept':'text/html,application/xhtml+xml'}});
+      const location = response.headers.get('location');
+      if (location) { current = new URL(location,current).toString(); continue; }
+      if (response.url && response.url !== current) current = response.url;
+      const finalFound = coordsFromMapsUrl(current);
+      if (finalFound) return send(res,200,finalFound);
+      const body = await response.text().catch(()=> '');
+      const patterns = [
+        /!3d(-?\\d+(?:\\.\\d+)?)!4d(-?\\d+(?:\\.\\d+)?)/,
+        /"latitude"\\s*:\\s*(-?\\d+(?:\\.\\d+)?)[\\s\\S]{0,120}?"longitude"\\s*:\\s*(-?\\d+(?:\\.\\d+)?)/i
+      ];
+      for (const pattern of patterns) {
+        const m = body.match(pattern);
+        if (m) {
+          const lat=Number(m[1]),lng=Number(m[2]);
+          if (Number.isFinite(lat)&&Number.isFinite(lng)&&Math.abs(lat)<=90&&Math.abs(lng)<=180) return send(res,200,{lat,lng});
+        }
+      }
+      break;
+    }
+    return send(res,422,{error:'COORDINATES_NOT_FOUND',message:'Link này không chứa tọa độ đọc được. Hãy thử link Chia sẻ trực tiếp từ Google Maps.'});
+  } catch (error) {
+    console.error('Google Maps link error:',error);
+    return send(res,422,{error:'MAPS_LINK_ERROR',message:'Không thể mở link Google Maps này.'});
+  }
+}
+
 async function handleApi(req, res, url) {
   const placesHandled = await handlePlaces(req, res, url);
   if (placesHandled !== false) return true;
+  if (url.pathname === '/api/google-maps-coords' && req.method === 'GET') return googleMapsCoords(res,url);
   if (url.pathname === '/api/road-distance' && (req.method === 'GET' || req.method === 'POST')) return roadDistance(req,res,url);
   if (req.method !== 'GET') return false;
   if (url.pathname === '/api/address-search') {
