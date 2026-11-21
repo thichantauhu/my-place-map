@@ -228,7 +228,24 @@ function htmlMeta(html,key) {
   const re1=new RegExp('<meta[^>]+property=["\\\']'+key+'["\\\'][^>]+content=["\\\']([^"\\\']*)["\\\']','i');
   const re2=new RegExp('<meta[^>]+content=["\\\']([^"\\\']*)["\\\'][^>]+property=["\\\']'+key+'["\\\']','i');
   const m=html.match(re1)||html.match(re2);
-  return m?m[1].replace(/&amp;/g,'&').replace(/&quot;/g,'"').replace(/&#39;/g,"'").trim():'';
+  return m?decodeHtml(m[1]).trim():'';
+}
+function decodeHtml(value) {
+  return String(value||'').replace(/&amp;/g,'&').replace(/&quot;/g,'"').replace(/&#39;|&#x27;/gi,"'").replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&#(\d+);/g,(_,n)=>String.fromCodePoint(Number(n)));
+}
+function cleanMapsText(value) {
+  return decodeHtml(value).replace(/\s*[-|]\s*Google Maps\s*$/i,'').replace(/\s+/g,' ').trim();
+}
+function isGenericMapsText(value) {
+  return !value || /^(google maps|find local businesses, view maps and get driving directions)$/i.test(value.trim());
+}
+function nameFromMapsUrl(value) {
+  try {
+    const u=new URL(value);
+    const match=u.pathname.match(/\/maps\/place\/([^/]+)/i) || u.pathname.match(/\/place\/([^/]+)/i);
+    if(!match)return '';
+    return decodeURIComponent(match[1].replace(/\+/g,' ')).trim();
+  } catch (_) { return ''; }
 }
 async function googleMapsPlace(res,url) {
   const raw=(url.searchParams.get('url')||'').trim();
@@ -239,17 +256,24 @@ async function googleMapsPlace(res,url) {
     let html='';
     for(let i=0;i<7;i++){
       if(!allowedMapsHost(current.hostname.toLowerCase()))throw new Error('REDIRECT_HOST_NOT_ALLOWED');
-      const response=await fetch(current,{redirect:'manual',headers:{'User-Agent':'Mozilla/5.0 (compatible; MyPlaceMap/1.0)','Accept':'text/html,application/xhtml+xml'}});
+      const response=await fetch(current,{redirect:'manual',headers:{'User-Agent':'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124 Safari/537.36','Accept-Language':'vi-VN,vi;q=0.9,en;q=0.8','Accept':'text/html,application/xhtml+xml'}});
       const location=response.headers.get('location');
       if(location){current=new URL(location,current);continue}
       html=await response.text().catch(()=>'');break;
     }
     const coords=extractMapsCoords(current.href)||extractMapsCoords(html);
-    const name=htmlMeta(html,'og:title').replace(/\s*[-|]\s*Google Maps\s*$/i,'');
-    const address=htmlMeta(html,'og:description');
-    const open=html.match(/(?:Mở cửa|Opening hours|Giờ mở cửa)[^<\n]{0,100}?(\d{1,2}:\d{2})/i);
-    const close=html.match(/(?:Đóng cửa|Closes|Giờ đóng cửa)[^<\n]{0,100}?(\d{1,2}:\d{2})/i);
-    const result={name,address,openingHours:open?.[1]||'',closingHours:close?.[1]||''};if(coords)Object.assign(result,coords);
+    let name=cleanMapsText(htmlMeta(html,'og:title'));
+    if(isGenericMapsText(name))name=cleanMapsText(nameFromMapsUrl(current.href));
+    let address=cleanMapsText(htmlMeta(html,'og:description'));
+    if(isGenericMapsText(address))address='';
+    if(coords && !address && GOGODUK_API_KEY) {
+      try {
+        const reverse=await gogodukRequest('/v1/reverse',{'point.lat':coords.lat,'point.lon':coords.lng,size:1,lang:'vi','boundary.country':'VN'});
+        address=reverse.results?.[0]?.address || '';
+      } catch(error) { console.warn('Google Maps reverse geocode unavailable:',error.message); }
+    }
+    const result={name,address,openingHours:'',closingHours:''};
+    if(coords)Object.assign(result,coords);
     if(!name&&!address&&!coords)return send(res,422,{error:'MAPS_INFO_NOT_FOUND',message:'Google Maps không cung cấp đủ thông tin cho link này. M có thể nhập thủ công.'});
     return send(res,200,result);
   }catch(error){console.error('Google Maps place error:',error);return send(res,422,{error:'MAPS_LINK_ERROR',message:'Không thể đọc link Google Maps này.'})}
