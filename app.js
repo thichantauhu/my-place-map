@@ -3,7 +3,7 @@ const GEOCODER='https://nominatim.openstreetmap.org';
 const ARCGIS='https://geocode-api.arcgis.com/arcgis/rest/services/World/GeocodeServer/findAddressCandidates';
 let places=loadPlaces(),currentLocation=null,activeFilter='all',map,userMarker,userAccuracy,placeMarkers=new Map(),roadDistances=new Map(),roadDistanceLoading=false;
 let pickerMap=null,pickerMarker=null,pickerPosition=null;
-const els={placeList:document.getElementById('placeList'),countText:document.getElementById('countText'),radius:document.getElementById('radiusSelect'),locate:document.getElementById('locateBtn'),add:document.getElementById('addBtn'),dialog:document.getElementById('placeDialog'),form:document.getElementById('placeForm'),closePlace:document.getElementById('closePlaceBtn'),cancelPlace:document.getElementById('cancelPlaceBtn'),name:document.getElementById('nameInput'),address:document.getElementById('addressInput'),searchAddress:document.getElementById('searchAddressBtn'),addressResults:document.getElementById('addressResults'),pickLocation:document.getElementById('pickLocationBtn'),selectedLocation:document.getElementById('selectedLocation'),category:document.getElementById('categoryInput'),note:document.getElementById('noteInput'),link:document.getElementById('linkInput'),coord:document.getElementById('coordInput'),lat:document.getElementById('latInput'),lng:document.getElementById('lngInput'),want:document.getElementById('wantInput'),error:document.getElementById('formError'),mapHint:document.getElementById('mapHint'),pickerOverlay:document.getElementById('pickerOverlay'),pickerCoords:document.getElementById('pickerCoords'),confirmPicker:document.getElementById('confirmPickerBtn'),closePicker:document.getElementById('closePickerBtn'),ratingDialog:document.getElementById('ratingDialog'),ratingName:document.getElementById('ratingName'),ratingAddress:document.getElementById('ratingAddress'),ratingOptions:document.getElementById('ratingOptions'),saveBtn:document.getElementById('saveBtn'),ratingError:document.getElementById('ratingError'),closeRating:document.getElementById('closeRatingBtn')};
+const els={placeList:document.getElementById('placeList'),countText:document.getElementById('countText'),radius:document.getElementById('radiusSelect'),locate:document.getElementById('locateBtn'),add:document.getElementById('addBtn'),dialog:document.getElementById('placeDialog'),form:document.getElementById('placeForm'),closePlace:document.getElementById('closePlaceBtn'),cancelPlace:document.getElementById('cancelPlaceBtn'),name:document.getElementById('nameInput'),address:document.getElementById('addressInput'),searchAddress:document.getElementById('searchAddressBtn'),addressResults:document.getElementById('addressResults'),pickLocation:document.getElementById('pickLocationBtn'),selectedLocation:document.getElementById('selectedLocation'),category:document.getElementById('categoryInput'),note:document.getElementById('noteInput'),link:document.getElementById('linkInput'),googleMapsUrl:document.getElementById('googleMapsUrlInput'),getMapsInfo:document.getElementById('getMapsInfoBtn'),mapsInfoStatus:document.getElementById('mapsInfoStatus'),openingHours:document.getElementById('openingHoursInput'),closingHours:document.getElementById('closingHoursInput'),coord:document.getElementById('coordInput'),lat:document.getElementById('latInput'),lng:document.getElementById('lngInput'),want:document.getElementById('wantInput'),error:document.getElementById('formError'),mapHint:document.getElementById('mapHint'),pickerOverlay:document.getElementById('pickerOverlay'),pickerCoords:document.getElementById('pickerCoords'),confirmPicker:document.getElementById('confirmPickerBtn'),closePicker:document.getElementById('closePickerBtn'),ratingDialog:document.getElementById('ratingDialog'),ratingName:document.getElementById('ratingName'),ratingAddress:document.getElementById('ratingAddress'),ratingOptions:document.getElementById('ratingOptions'),saveBtn:document.getElementById('saveBtn'),ratingError:document.getElementById('ratingError'),closeRating:document.getElementById('closeRatingBtn')};
 const categoryInfo={food:{icon:'🍜',label:'Ăn uống'},fun:{icon:'🎮',label:'Vui chơi'},cafe:{icon:'☕',label:'Cafe'},other:{icon:'📌',label:'Khác'}};
 const ratingInfo={like:{icon:'❤️',label:'Thích'},neutral:{icon:'🙂',label:'Bình thường'},dislike:{icon:'👿',label:'Không thích'}};
 let ratingPlaceId=null,editingPlaceId=null;
@@ -27,7 +27,7 @@ function parseCoords(text){
 }
 function syncCoords(lat,lng){if(!validCoord(lat,lng))return false;els.coord.value=`${lat}, ${lng}`;els.lat.value=String(lat);els.lng.value=String(lng);els.selectedLocation.textContent=`📍 Đã chọn: ${lat.toFixed(6)}, ${lng.toFixed(6)}`;return true}
 function readCoords(){const c=parseCoords(els.coord.value);if(c){syncCoords(c.lat,c.lng);return c}const lat=Number(els.lat.value),lng=Number(els.lng.value);return validCoord(lat,lng)?{lat,lng}:null}
-function normalizePlace(p){return{id:String(p.id),name:String(p.name||''),address:String(p.address||''),category:String(p.category||'food'),note:String(p.note||''),link:String(p.link||''),lat:Number(p.lat),lng:Number(p.lng),want:Boolean(p.want),rating:['like','neutral','dislike'].includes(p.rating)?p.rating:null,createdAt:Number(p.createdAt??p.created_at??Date.now())}}
+function normalizePlace(p){return{id:String(p.id),name:String(p.name||''),address:String(p.address||''),category:String(p.category||'food'),note:String(p.note||''),link:String(p.link||''),openingHours:String(p.openingHours||p.opening_hours||''),closingHours:String(p.closingHours||p.closing_hours||''),lat:Number(p.lat),lng:Number(p.lng),want:Boolean(p.want),rating:['like','neutral','dislike'].includes(p.rating)?p.rating:null,createdAt:Number(p.createdAt??p.created_at??Date.now())}}
 function loadPlaces(){try{const arr=JSON.parse(localStorage.getItem(STORAGE_KEY)||'[]');const seen=new Set();const out=arr.map(normalizePlace).filter(p=>{const key=`${p.name}|${p.lat}|${p.lng}|${p.address}`;if(seen.has(key))return false;seen.add(key);return true});if(out.length!==arr.length)localStorage.setItem(STORAGE_KEY,JSON.stringify(out));return out}catch(_){return[]}}
 function savePlaces(){localStorage.setItem(STORAGE_KEY,JSON.stringify(places))}
 const SUPABASE_URL='https://ieywxjnybpfchocvgvqt.supabase.co';
@@ -45,7 +45,7 @@ async function api(path,options={}){
   let payload=body;
   if(body && method==='POST'){
     const p=JSON.parse(body);
-    payload=JSON.stringify({id:p.id,name:p.name,address:p.address,category:p.category,note:p.note,link:p.link,lat:p.lat,lng:p.lng,want:p.want,rating:p.rating,created_at:p.createdAt});
+    payload=JSON.stringify({id:p.id,name:p.name,address:p.address,category:p.category,note:p.note,link:p.link,opening_hours:p.openingHours,closing_hours:p.closingHours,lat:p.lat,lng:p.lng,want:p.want,rating:p.rating,created_at:p.createdAt});
     headers.Prefer='return=representation';
   }
   const res=await fetch(url,{...options,method,headers,body:payload});
@@ -134,6 +134,27 @@ async function arcgisSearch(q){const u=new URL(ARCGIS);u.searchParams.set('Singl
 function renderSearchResult(title,onClick){const b=document.createElement('button');b.type='button';b.className='address-result';b.textContent=title;b.onclick=onClick;els.addressResults.appendChild(b)}
 async function searchAddress(){const q=els.address.value.trim();els.error.textContent='';els.addressResults.innerHTML='';if(!q){els.error.textContent='Hãy nhập địa chỉ cần tìm.';return}els.searchAddress.disabled=true;els.searchAddress.textContent='⌛ Đang tìm...';try{let results=[];try{results=await nominatimSearch(q)}catch(_){}if(!results.length){try{results=await arcgisSearch(q)}catch(_){}}if(!results.length){els.addressResults.innerHTML='<div class="address-no-result">Không tìm thấy địa chỉ. Hãy thử viết ngắn hơn hoặc dán tọa độ Google Maps.</div>';return}results.forEach(r=>{const lat=Number(r.lat),lng=Number(r.lon);renderSearchResult(r.display_name,()=>{els.address.value=r.display_name;syncCoords(lat,lng);els.addressResults.innerHTML='';map.setView([lat,lng],18,{animate:true});els.mapHint.textContent='📍 Đã chọn kết quả tìm kiếm. Nếu cần đúng vị trí số nhà, dán tọa độ Google Maps.'})})}catch(_){els.error.textContent='Không thể tìm địa chỉ lúc này. M vẫn có thể dán tọa độ Google Maps.'}finally{els.searchAddress.disabled=false;els.searchAddress.textContent='🔎 Tìm địa chỉ'}}
 async function reverseGeocode(lat,lng,fill=false){try{const u=new URL(`${GEOCODER}/reverse`);u.searchParams.set('format','jsonv2');u.searchParams.set('lat',lat);u.searchParams.set('lon',lng);u.searchParams.set('zoom','18');u.searchParams.set('addressdetails','1');const r=await fetch(u,{headers:{Accept:'application/json'}});const d=await r.json();if(fill&&d.display_name)els.address.value=d.display_name;return d.display_name||''}catch(_){return''}}
+
+async function getGoogleMapsInfo(){
+  const raw=els.googleMapsUrl.value.trim();
+  els.mapsInfoStatus.textContent='';
+  if(!raw){els.mapsInfoStatus.textContent='Hãy dán link Google Maps trước.';return}
+  els.getMapsInfo.disabled=true;els.getMapsInfo.textContent='⌛ Đang lấy thông tin...';
+  try{
+    const response=await fetch('/api/google-maps-place?url='+encodeURIComponent(raw),{headers:{Accept:'application/json'}});
+    const data=await response.json().catch(()=>({}));
+    if(!response.ok)throw new Error(data.message||'Không đọc được link này.');
+    if(data.name)els.name.value=data.name;
+    if(data.address)els.address.value=data.address;
+    if(validCoord(Number(data.lat),Number(data.lng)))syncCoords(Number(data.lat),Number(data.lng));
+    if(data.openingHours)els.openingHours.value=data.openingHours;
+    if(data.closingHours)els.closingHours.value=data.closingHours;
+    const found=[data.name&&'tên',data.address&&'địa chỉ',validCoord(Number(data.lat),Number(data.lng))&&'tọa độ',data.openingHours&&'giờ mở cửa',data.closingHours&&'giờ đóng cửa'].filter(Boolean);
+    els.mapsInfoStatus.textContent=found.length?'✓ Đã lấy được: '+found.join(', ')+'. M kiểm tra và chỉnh sửa lại nếu cần.':'Không tìm thấy thông tin tự động. M có thể nhập thủ công.';
+  }catch(error){els.mapsInfoStatus.textContent=error.message||'Không thể lấy thông tin từ link này. M thử link Chia sẻ Google Maps.'}
+  finally{els.getMapsInfo.disabled=false;els.getMapsInfo.textContent='✨ Lấy thông tin từ Google Maps'}
+}
+
 function openEditDialog(id){
   const p=places.find(x=>x.id===id);
   if(!p)return;
@@ -144,6 +165,7 @@ function openEditDialog(id){
   els.address.value=p.address;
   els.note.value=p.note;
   els.link.value=p.link||'';
+  els.googleMapsUrl.value='';els.mapsInfoStatus.textContent='';els.openingHours.value=p.openingHours||'';els.closingHours.value=p.closingHours||'';
   els.coord.value='';
   els.lat.value='';
   els.lng.value='';
@@ -159,7 +181,7 @@ function openEditDialog(id){
 function openAddDialog(lat=null,lng=null){
   editingPlaceId=null;
   els.dialog.querySelector('h3').textContent='Thêm địa điểm';
-  if(els.saveBtn) els.saveBtn.textContent='Lưu địa điểm';els.error.textContent='';els.addressResults.innerHTML='';els.name.value='';els.address.value='';els.note.value='';els.link.value='';els.coord.value='';els.lat.value='';els.lng.value='';els.selectedLocation.textContent='Chưa chọn vị trí chính xác';els.want.checked=false;els.category.value='food';if(validCoord(lat,lng))syncCoords(lat,lng);els.dialog.showModal();setTimeout(()=>els.name.focus(),50)}
+  if(els.saveBtn) els.saveBtn.textContent='Lưu địa điểm';els.error.textContent='';els.addressResults.innerHTML='';els.name.value='';els.address.value='';els.note.value='';els.link.value='';els.googleMapsUrl.value='';els.mapsInfoStatus.textContent='';els.openingHours.value='';els.closingHours.value='';els.coord.value='';els.lat.value='';els.lng.value='';els.selectedLocation.textContent='Chưa chọn vị trí chính xác';els.want.checked=false;els.category.value='food';if(validCoord(lat,lng))syncCoords(lat,lng);els.dialog.showModal();setTimeout(()=>els.name.focus(),50)}
 function closePlaceDialog(){if(els.dialog.open)els.dialog.close();els.error.textContent='';els.addressResults.innerHTML=''}
 function setPickerPosition(lat,lng){if(!validCoord(lat,lng))return;pickerPosition={lat,lng};if(pickerMarker)pickerMarker.setLatLng([lat,lng]);else{pickerMarker=L.marker([lat,lng],{draggable:true}).addTo(pickerMap);pickerMarker.on('dragend',()=>{const p=pickerMarker.getLatLng();setPickerPosition(p.lat,p.lng)})}els.pickerCoords.textContent=`📍 ${lat.toFixed(6)}, ${lng.toFixed(6)}`}
 function openPicker(){const c=readCoords(),center=c||(map?map.getCenter():{lat:10.7769,lng:106.7009});els.dialog.close();els.pickerOverlay.hidden=false;if(!pickerMap){pickerMap=L.map('pickerMap',{zoomControl:true,doubleClickZoom:false}).setView([center.lat,center.lng],18);L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:20,attribution:'&copy; OpenStreetMap contributors'}).addTo(pickerMap);pickerMap.on('click',e=>setPickerPosition(e.latlng.lat,e.latlng.lng))}setTimeout(()=>{pickerMap.invalidateSize();pickerMap.setView([center.lat,center.lng],18);setPickerPosition(center.lat,center.lng)},100)}
@@ -186,6 +208,8 @@ async function savePlace(e){
         category:els.category.value,
         note:els.note.value.trim(),
         link:els.link.value.trim(),
+        openingHours:els.openingHours.value.trim(),
+        closingHours:els.closingHours.value.trim(),
         lat:c.lat,
         lng:c.lng,
         want:els.want.checked
@@ -198,6 +222,8 @@ async function savePlace(e){
           category:updated.category,
           note:updated.note,
           link:updated.link,
+          opening_hours:updated.openingHours,
+          closing_hours:updated.closingHours,
           lat:updated.lat,
           lng:updated.lng,
           want:updated.want
@@ -213,7 +239,7 @@ async function savePlace(e){
       if(currentLocation)updateRoadDistances();
       els.mapHint.textContent='✏️ Đã cập nhật toàn bộ thông tin địa điểm.';
     }else{
-      const place=normalizePlace({id:window.crypto?.randomUUID?.()||`${Date.now()}-${Math.random()}`,name,address,category:els.category.value,note:els.note.value.trim(),link:els.link.value.trim(),lat:c.lat,lng:c.lng,want:els.want.checked,rating:null,createdAt:Date.now()});
+      const place=normalizePlace({id:window.crypto?.randomUUID?.()||`${Date.now()}-${Math.random()}`,name,address,category:els.category.value,note:els.note.value.trim(),link:els.link.value.trim(),openingHours:els.openingHours.value.trim(),closingHours:els.closingHours.value.trim(),lat:c.lat,lng:c.lng,want:els.want.checked,rating:null,createdAt:Date.now()});
       await api('/api/places',{method:'POST',body:JSON.stringify(place)});
       places.push(place);
       els.radius.value='999';
@@ -268,7 +294,7 @@ function useLocation(){
   );
 }
 
-els.add.onclick=()=>openAddDialog();els.closePlace.onclick=closePlaceDialog;els.cancelPlace.onclick=closePlaceDialog;els.form.addEventListener('submit',savePlace);els.searchAddress.onclick=searchAddress;els.pickLocation.onclick=openPicker;els.closePicker.onclick=closePicker;els.confirmPicker.onclick=confirmPicker;els.locate.onclick=useLocation;els.radius.onchange=render;
+els.add.onclick=()=>openAddDialog();els.closePlace.onclick=closePlaceDialog;els.cancelPlace.onclick=closePlaceDialog;els.form.addEventListener('submit',savePlace);els.searchAddress.onclick=searchAddress;els.getMapsInfo.onclick=getGoogleMapsInfo;els.pickLocation.onclick=openPicker;els.closePicker.onclick=closePicker;els.confirmPicker.onclick=confirmPicker;els.locate.onclick=useLocation;els.radius.onchange=render;
 document.querySelectorAll('.chip').forEach(b=>b.onclick=()=>{document.querySelectorAll('.chip').forEach(x=>x.classList.remove('active'));b.classList.add('active');activeFilter=b.dataset.filter;render()});
 els.ratingOptions?.querySelectorAll('[data-rating]').forEach(b=>b.onclick=()=>{const p=places.find(x=>x.id===ratingPlaceId);setRating(p?.rating===b.dataset.rating?null:b.dataset.rating)});els.closeRating?.addEventListener('click',()=>els.ratingDialog.close());
 initMap();render();syncRemote();setTimeout(useLocation,250);
