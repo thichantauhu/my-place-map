@@ -247,6 +247,34 @@ function nameFromMapsUrl(value) {
     return decodeURIComponent(match[1].replace(/\+/g,' ')).trim();
   } catch (_) { return ''; }
 }
+function extractDailyHours(html) {
+  const source=decodeHtml(String(html||'').replace(/\\\\u003c/gi,'<').replace(/\\\\u003e/gi,'>').replace(/\\\\u0026/gi,'&').replace(/\\\\n/g,' '));
+  const ranges=[...source.matchAll(/(\\d{1,2}:\\d{2})\\s*(?:–|—|−|-)\\s*(\\d{1,2}:\\d{2})/g)].map(m=>({open:m[1].padStart(5,'0'),close:m[2].padStart(5,'0')}));
+  if(!ranges.length)return {openingHours:'',closingHours:''};
+  const valid=t=>{const [h,m]=t.split(':').map(Number);return h<24&&m<60};
+  const opens=ranges.map(x=>x.open).filter(valid).sort(), closes=ranges.map(x=>x.close).filter(valid).sort();
+  return {openingHours:opens[0]||'',closingHours:closes[closes.length-1]||''};
+}
+function extractAddressFromHtml(html) {
+  const source=decodeHtml(String(html||'').replace(/\\\\u003c/gi,'<').replace(/\\\\u0026/gi,'&'));
+  const candidates=[];
+  const re=/(\\d{1,5}\\s+[^,<>"]{3,80},\\s*(?:Phường|Xã|Tân Hòa|Tân Bình|Quận|Thành phố)[^"<>]{3,100})/gi;
+  for(const m of source.matchAll(re)){const v=m[1].replace(/\\s+/g,' ').trim();if(!/google maps|directions/i.test(v))candidates.push(v)}
+  return candidates.sort((a,b)=>a.length-b.length)[0]||'';
+}
+async function reverseAddressFromCoords(lat,lng) {
+  if(GOGODUK_API_KEY) {
+    try { const d=await gogodukRequest('/v1/reverse',{'point.lat':lat,'point.lon':lng,size:1,lang:'vi','boundary.country':'VN'}); const a=d.results?.[0]?.address; if(a)return a; }
+    catch(error) { console.warn('GoGoDuk reverse geocode failed:',error.message); }
+  }
+  try {
+    const u=new URL('https://nominatim.openstreetmap.org/reverse');
+    Object.entries({format:'jsonv2',lat,lng,zoom:18,addressdetails:1}).forEach(([k,v])=>u.searchParams.set(k,v));
+    const r=await fetch(u,{headers:{'User-Agent':'MyPlaceMap/1.0 (place metadata lookup)','Accept-Language':'vi'}});
+    if(r.ok){const d=await r.json();if(d.display_name)return d.display_name;}
+  } catch(error) { console.warn('OSM reverse geocode failed:',error.message); }
+  return '';
+}
 async function googleMapsPlace(res,url) {
   const raw=(url.searchParams.get('url')||'').trim();
   if(!raw||raw.length>2048)return send(res,400,{error:'INVALID_MAPS_URL',message:'Link Google Maps không hợp lệ.'});
@@ -266,13 +294,10 @@ async function googleMapsPlace(res,url) {
     if(isGenericMapsText(name))name=cleanMapsText(nameFromMapsUrl(current.href));
     let address=cleanMapsText(htmlMeta(html,'og:description'));
     if(isGenericMapsText(address))address='';
-    if(coords && !address && GOGODUK_API_KEY) {
-      try {
-        const reverse=await gogodukRequest('/v1/reverse',{'point.lat':coords.lat,'point.lon':coords.lng,size:1,lang:'vi','boundary.country':'VN'});
-        address=reverse.results?.[0]?.address || '';
-      } catch(error) { console.warn('Google Maps reverse geocode unavailable:',error.message); }
-    }
-    const result={name,address,openingHours:'',closingHours:''};
+    if(!address)address=extractAddressFromHtml(html);
+    if(!address&&coords)address=await reverseAddressFromCoords(coords.lat,coords.lng);
+    const hours=extractDailyHours(html);
+    const result={name,address,openingHours:hours.openingHours,closingHours:hours.closingHours};
     if(coords)Object.assign(result,coords);
     if(!name&&!address&&!coords)return send(res,422,{error:'MAPS_INFO_NOT_FOUND',message:'Google Maps không cung cấp đủ thông tin cho link này. M có thể nhập thủ công.'});
     return send(res,200,result);
