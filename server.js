@@ -86,7 +86,7 @@ function normalizeRating(value) {
 function normalizePlace(p) {
   return {
     id: String(p.id), name: String(p.name || ''), address: String(p.address || ''),
-    category: String(p.category || 'food'), note: String(p.note || ''), link: String(p.link || ''), lat: Number(p.lat), lng: Number(p.lng),
+    category: String(p.category || 'food'), note: String(p.note || ''), link: String(p.link || ''), openingHours: String(p.opening_hours || p.openingHours || ''), closingHours: String(p.closing_hours || p.closingHours || ''), lat: Number(p.lat), lng: Number(p.lng),
     want: Boolean(p.want), rating: normalizeRating(p.rating), createdAt: Number(p.createdAt ?? p.created_at ?? Date.now())
   };
 }
@@ -114,7 +114,7 @@ async function handlePlaces(req, res, url) {
     if (req.method === 'POST' && url.pathname === '/api/places') {
       const p = normalizePlace(await readBody(req));
       if (!p.id || !p.name || !Number.isFinite(p.lat) || !Number.isFinite(p.lng)) return send(res, 400, {error: 'INVALID_PLACE', message: 'Dữ liệu địa điểm không hợp lệ.'});
-      const row = {id:p.id,name:p.name,address:p.address,category:p.category,note:p.note,link:p.link,lat:p.lat,lng:p.lng,want:p.want,rating:p.rating,created_at:p.createdAt};
+      const row = {id:p.id,name:p.name,address:p.address,category:p.category,note:p.note,link:p.link,opening_hours:p.openingHours,closing_hours:p.closingHours,lat:p.lat,lng:p.lng,want:p.want,rating:p.rating,created_at:p.createdAt};
       const rows = await supabaseRequest('POST', 'places', [row]);
       return send(res, 201, {place: normalizePlace(Array.isArray(rows) ? rows[0] : row)});
     }
@@ -135,6 +135,8 @@ async function handlePlaces(req, res, url) {
       if (Object.prototype.hasOwnProperty.call(body, 'category')) update.category = String(body.category || 'food');
       if (Object.prototype.hasOwnProperty.call(body, 'note')) update.note = String(body.note || '').trim();
       if (Object.prototype.hasOwnProperty.call(body, 'link')) update.link = String(body.link || '').trim();
+      if (Object.prototype.hasOwnProperty.call(body, 'opening_hours')) update.opening_hours = String(body.opening_hours || '').trim();
+      if (Object.prototype.hasOwnProperty.call(body, 'closing_hours')) update.closing_hours = String(body.closing_hours || '').trim();
       if (Object.prototype.hasOwnProperty.call(body, 'lat')) update.lat = Number(body.lat);
       if (Object.prototype.hasOwnProperty.call(body, 'lng')) update.lng = Number(body.lng);
       if (Object.prototype.hasOwnProperty.call(body, 'want')) update.want = Boolean(body.want);
@@ -215,70 +217,48 @@ async function roadDistance(req, res, url) {
     return send(res,502,{error:'ROUTING_UNAVAILABLE',message:error.message});
   }
 }
-function coordsFromMapsUrl(value) {
-  try {
-    const u = new URL(value);
-    const host = u.hostname.toLowerCase();
-    if (!(host === 'maps.app.goo.gl' || host === 'goo.gl' || host === 'google.com' || host.endsWith('.google.com') || host === 'maps.google.com')) return null;
-    const text = decodeURIComponent(u.href);
-    let m = text.match(/@(-?\\d+(?:\\.\\d+)?),\\s*(-?\\d+(?:\\.\\d+)?)/);
-    if (!m) m = text.match(/!3d(-?\\d+(?:\\.\\d+)?)!4d(-?\\d+(?:\\.\\d+)?)/);
-    if (!m) {
-      for (const key of ['q','query','ll','center','destination']) {
-        const v = u.searchParams.get(key);
-        if (v) { m = v.match(/(-?\\d+(?:\\.\\d+)?)\\s*,\\s*(-?\\d+(?:\\.\\d+)?)/); if (m) break; }
-      }
-    }
-    if (!m) return null;
-    const lat = Number(m[1]), lng = Number(m[2]);
-    return Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180 ? {lat,lng} : null;
-  } catch (_) { return null; }
+function allowedMapsHost(host) { return host === 'maps.app.goo.gl' || host === 'goo.gl' || host === 'google.com' || host.endsWith('.google.com'); }
+function extractMapsCoords(value) {
+  const text=String(value||'');
+  const patterns=[/@(-?\d+(?:\.\d+)?),\s*(-?\d+(?:\.\d+)?)/,/!3d(-?\d+(?:\.\d+)?)!4d(-?\d+(?:\.\d+)?)/,/(?:q|query|ll|center|destination)=(-?\d+(?:\.\d+)?)[,%20]+(-?\d+(?:\.\d+)?)/];
+  for(const re of patterns){const m=text.match(re);if(m){const lat=Number(m[1]),lng=Number(m[2]);if(Number.isFinite(lat)&&Number.isFinite(lng)&&Math.abs(lat)<=90&&Math.abs(lng)<=180)return{lat,lng}}}
+  return null;
 }
-
-async function googleMapsCoords(res, url) {
-  const raw = (url.searchParams.get('url') || '').trim();
-  if (!raw || raw.length > 2048) return send(res,400,{error:'INVALID_MAPS_URL',message:'Link Google Maps không hợp lệ.'});
-  try {
-    const parsed = new URL(raw);
-    const host = parsed.hostname.toLowerCase();
-    if (!(host === 'maps.app.goo.gl' || host === 'goo.gl' || host === 'google.com' || host.endsWith('.google.com') || host === 'maps.google.com')) {
-      return send(res,400,{error:'UNSUPPORTED_URL',message:'Chỉ hỗ trợ link Google Maps.'});
-    }
-    let current = raw;
-    for (let i=0; i<6; i++) {
-      const found = coordsFromMapsUrl(current);
-      if (found) return send(res,200,found);
-      const response = await fetch(current,{redirect:'manual',headers:{'User-Agent':'Mozilla/5.0 (compatible; MyPlaceMap/1.0)','Accept':'text/html,application/xhtml+xml'}});
-      const location = response.headers.get('location');
-      if (location) { current = new URL(location,current).toString(); continue; }
-      if (response.url && response.url !== current) current = response.url;
-      const finalFound = coordsFromMapsUrl(current);
-      if (finalFound) return send(res,200,finalFound);
-      const body = await response.text().catch(()=> '');
-      const patterns = [
-        /!3d(-?\\d+(?:\\.\\d+)?)!4d(-?\\d+(?:\\.\\d+)?)/,
-        /"latitude"\\s*:\\s*(-?\\d+(?:\\.\\d+)?)[\\s\\S]{0,120}?"longitude"\\s*:\\s*(-?\\d+(?:\\.\\d+)?)/i
-      ];
-      for (const pattern of patterns) {
-        const m = body.match(pattern);
-        if (m) {
-          const lat=Number(m[1]),lng=Number(m[2]);
-          if (Number.isFinite(lat)&&Number.isFinite(lng)&&Math.abs(lat)<=90&&Math.abs(lng)<=180) return send(res,200,{lat,lng});
-        }
-      }
-      break;
-    }
-    return send(res,422,{error:'COORDINATES_NOT_FOUND',message:'Link này không chứa tọa độ đọc được. Hãy thử link Chia sẻ trực tiếp từ Google Maps.'});
-  } catch (error) {
-    console.error('Google Maps link error:',error);
-    return send(res,422,{error:'MAPS_LINK_ERROR',message:'Không thể mở link Google Maps này.'});
-  }
+function htmlMeta(html,key) {
+  const re1=new RegExp('<meta[^>]+property=["\\\']'+key+'["\\\'][^>]+content=["\\\']([^"\\\']*)["\\\']','i');
+  const re2=new RegExp('<meta[^>]+content=["\\\']([^"\\\']*)["\\\'][^>]+property=["\\\']'+key+'["\\\']','i');
+  const m=html.match(re1)||html.match(re2);
+  return m?m[1].replace(/&amp;/g,'&').replace(/&quot;/g,'"').replace(/&#39;/g,"'").trim():'';
 }
-
+async function googleMapsPlace(res,url) {
+  const raw=(url.searchParams.get('url')||'').trim();
+  if(!raw||raw.length>2048)return send(res,400,{error:'INVALID_MAPS_URL',message:'Link Google Maps không hợp lệ.'});
+  try{
+    let current=new URL(raw);
+    if(!allowedMapsHost(current.hostname.toLowerCase()))return send(res,400,{error:'UNSUPPORTED_URL',message:'Chỉ hỗ trợ link Google Maps.'});
+    let html='';
+    for(let i=0;i<7;i++){
+      if(!allowedMapsHost(current.hostname.toLowerCase()))throw new Error('REDIRECT_HOST_NOT_ALLOWED');
+      const response=await fetch(current,{redirect:'manual',headers:{'User-Agent':'Mozilla/5.0 (compatible; MyPlaceMap/1.0)','Accept':'text/html,application/xhtml+xml'}});
+      const location=response.headers.get('location');
+      if(location){current=new URL(location,current);continue}
+      html=await response.text().catch(()=>'');break;
+    }
+    const coords=extractMapsCoords(current.href)||extractMapsCoords(html);
+    const name=htmlMeta(html,'og:title').replace(/\s*[-|]\s*Google Maps\s*$/i,'');
+    const address=htmlMeta(html,'og:description');
+    const open=html.match(/(?:Mở cửa|Opening hours|Giờ mở cửa)[^<\n]{0,100}?(\d{1,2}:\d{2})/i);
+    const close=html.match(/(?:Đóng cửa|Closes|Giờ đóng cửa)[^<\n]{0,100}?(\d{1,2}:\d{2})/i);
+    const result={name,address,openingHours:open?.[1]||'',closingHours:close?.[1]||''};if(coords)Object.assign(result,coords);
+    if(!name&&!address&&!coords)return send(res,422,{error:'MAPS_INFO_NOT_FOUND',message:'Google Maps không cung cấp đủ thông tin cho link này. M có thể nhập thủ công.'});
+    return send(res,200,result);
+  }catch(error){console.error('Google Maps place error:',error);return send(res,422,{error:'MAPS_LINK_ERROR',message:'Không thể đọc link Google Maps này.'})}
+}
 async function handleApi(req, res, url) {
   const placesHandled = await handlePlaces(req, res, url);
   if (placesHandled !== false) return true;
-  if (url.pathname === '/api/google-maps-coords' && req.method === 'GET') return googleMapsCoords(res,url);
+  if (url.pathname === '/api/google-maps-place' && req.method === 'GET') return googleMapsPlace(res,url);
+  if (url.pathname === '/api/google-maps-coords' && req.method === 'GET') return googleMapsPlace(res,url);
   if (url.pathname === '/api/road-distance' && (req.method === 'GET' || req.method === 'POST')) return roadDistance(req,res,url);
   if (req.method !== 'GET') return false;
   if (url.pathname === '/api/address-search') {
