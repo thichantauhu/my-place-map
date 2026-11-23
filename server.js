@@ -367,61 +367,6 @@ async function readMapsRenderedPage(link) {
   } finally {await context.close().catch(()=>{})}
 }
 
-function osmWeekHours(value){
-  const days=['Mo','Tu','We','Th','Fr','Sa','Su'];
-  const result=days.map(()=>({open:'',close:''}));
-  if(!value||typeof value!=='string')return result;
-  if(/24\/7/.test(value))return days.map(()=>({open:'00:00',close:'23:59'}));
-  for(const clause of value.split(';')){
-    const part=clause.trim();
-    if(/off|closed|PH|SH/i.test(part))continue;
-    const range=part.match(/((?:Mo|Tu|We|Th|Fr|Sa|Su)(?:\s*-\s*(?:Mo|Tu|We|Th|Fr|Sa|Su))?(?:\s*,\s*(?:Mo|Tu|We|Th|Fr|Sa|Su))*)\s+(.+)/i);
-    if(!range)continue;
-    const chosen=new Set();
-    for(const group of range[1].split(',')){
-      const pair=group.trim().split(/\s*-\s*/);
-      const first=days.indexOf(pair[0]),last=days.indexOf(pair[1]||pair[0]);
-      if(first<0||last<0)continue;
-      for(let n=first;;n=(n+1)%7){chosen.add(n);if(n===last)break}
-    }
-    const times=[...range[2].matchAll(/(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})/g)];
-    for(const n of chosen)for(const match of times){
-      const open=match[1].padStart(5,'0'),close=match[2].padStart(5,'0');
-      if(!result[n].open||open<result[n].open)result[n].open=open;
-      if(!result[n].close||close>result[n].close)result[n].close=close;
-    }
-  }
-  return result;
-}
-function osmNameKey(value){return String(value||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim()}
-function osmDistance(a,b,c,d){
-  const rad=Math.PI/180,x=(d-b)*rad*Math.cos((a+c)*rad/2),y=(c-a)*rad;
-  return Math.sqrt(x*x+y*y)*6371000;
-}
-async function osmPlaceDetails(name,coords){
-  if(!coords||!Number.isFinite(coords.lat)||!Number.isFinite(coords.lng))return null;
-  const query='[out:json][timeout:9];(nwr(around:90,'+coords.lat+','+coords.lng+')['+'name'+'];);out center tags;';
-  const endpoint='https://overpass.kumi.systems/api/interpreter';
-  const response=await fetch(endpoint,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded','User-Agent':'MyPlaceMap/1.0 (personal map)'},body:new URLSearchParams({data:query}),signal:AbortSignal.timeout(10500)});
-  if(!response.ok)throw new Error('OSM_HTTP_'+response.status);
-  const data=await response.json();
-  const key=osmNameKey(name);
-  const candidates=(data.elements||[]).map(el=>{
-    const t=el.tags||{},lat=el.lat??el.center?.lat,lng=el.lon??el.center?.lon;
-    const distance=Number.isFinite(lat)&&Number.isFinite(lng)?osmDistance(coords.lat,coords.lng,lat,lng):Infinity;
-    const names=[t.name,t['name:vi'],t['name:en'],t.brand].filter(Boolean).map(osmNameKey);
-    const matching=key&&names.some(n=>n===key||(n.includes(key)&&key.length>=7)||(key.includes(n)&&n.length>=7));
-    return {t,distance,matching};
-  }).filter(x=>Number.isFinite(x.distance)&&x.distance<=90&&x.matching).sort((a,b)=>a.distance-b.distance);
-  const best=candidates[0];
-  if(!best)return null;
-  const t=best.t;
-  const street=[t['addr:housenumber'],t['addr:street']].filter(Boolean).join(' ');
-  const address=[street,t['addr:suburb']||t['addr:ward'],t['addr:city']||t['addr:district'],t['addr:country']].filter(Boolean).join(', ');
-  const weeklyHours=osmWeekHours(t.opening_hours);
-  return {address,weeklyHours,source:'OpenStreetMap',matchedName:t.name||'',distanceMeters:Math.round(best.distance)};
-}
-
 async function googleMapsPlace(res,url) {
   const raw=(url.searchParams.get('url')||'').trim();
   if(!raw||raw.length>2048)return send(res,400,{error:'INVALID_MAPS_URL',message:'Link Google Maps không hợp lệ.'});
@@ -429,9 +374,9 @@ async function googleMapsPlace(res,url) {
     let current=new URL(raw);
     if(!allowedMapsHost(current.hostname.toLowerCase()))return send(res,400,{error:'UNSUPPORTED_URL',message:'Chỉ hỗ trợ link Google Maps.'});
     let html='';
-    for(let i=0;i<7;i++){
+    for(let i=0;i<4;i++){
       if(!allowedMapsHost(current.hostname.toLowerCase()))throw new Error('REDIRECT_HOST_NOT_ALLOWED');
-      const response=await fetch(current,{signal:AbortSignal.timeout(6500),redirect:'manual',headers:{'User-Agent':'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124 Safari/537.36','Accept-Language':'vi-VN,vi;q=0.9,en;q=0.8','Accept':'text/html,application/xhtml+xml'}});
+      const response=await fetch(current,{signal:AbortSignal.timeout(2200),redirect:'manual',headers:{'User-Agent':'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124 Safari/537.36','Accept-Language':'vi-VN,vi;q=0.9,en;q=0.8','Accept':'text/html,application/xhtml+xml'}});
       const location=response.headers.get('location');
       if(location){current=new URL(location,current);continue}
       html=await response.text().catch(()=>'');break;
@@ -443,7 +388,6 @@ async function googleMapsPlace(res,url) {
     // Avoid launching a resource-heavy headless browser on Render Free.
     const result={name,address:'',openingHours:'',closingHours:'',weeklyHours:[]};
     if(coords)Object.assign(result,coords);
-    try {const osm=await osmPlaceDetails(name,coords);if(osm){result.address=osm.address;result.weeklyHours=osm.weeklyHours;result.source='OpenStreetMap';result.matchedName=osm.matchedName;}}catch(error){console.warn('OSM lookup unavailable:',error.message)}
     if(!name&&!result.address&&!coords)return send(res,422,{error:'MAPS_INFO_NOT_FOUND',message:'Google Maps không cung cấp đủ thông tin cho link này. M có thể nhập thủ công.'});
     return send(res,200,result);
   }catch(error){console.error('Google Maps place error:',error);return send(res,422,{error:'MAPS_LINK_ERROR',message:'Không thể đọc link Google Maps này.'})}
