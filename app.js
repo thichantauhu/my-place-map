@@ -153,7 +153,7 @@ async function getGoogleMapsInfo(){
   if(!raw){els.mapsInfoStatus.textContent='Hãy dán link Google Maps trước.';return}
   els.getMapsInfo.disabled=true;els.getMapsInfo.textContent='⌛ Đang lấy thông tin...';
   try{
-    const response=await fetch('/api/google-maps-place?url='+encodeURIComponent(raw),{headers:{Accept:'application/json'}});
+    const response=await fetch('/api/google-maps-place?url='+encodeURIComponent(raw),{headers:{Accept:'application/json'},signal:AbortSignal.timeout(23000)});
     const data=await response.json().catch(()=>({}));
     if(!response.ok)throw new Error(data.message||'Không đọc được link này.');
     if(data.name)els.name.value=data.name;
@@ -164,7 +164,7 @@ async function getGoogleMapsInfo(){
 
     const found=[data.name&&'tên',data.address&&'địa chỉ',validCoord(Number(data.lat),Number(data.lng))&&'tọa độ',Array.isArray(data.weeklyHours)&&data.weeklyHours.some(x=>x.open||x.close)&&'lịch T2–CN'].filter(Boolean);
     els.mapsInfoStatus.textContent=found.length?'✓ Đã lấy được: '+found.join(', ')+'. M kiểm tra và chỉnh sửa lại nếu cần.':'Không tìm thấy thông tin tự động. M có thể nhập thủ công.';
-  }catch(error){els.mapsInfoStatus.textContent=error.message||'Không thể lấy thông tin từ link này. M thử link Chia sẻ Google Maps.'}
+  }catch(error){els.mapsInfoStatus.textContent=error.name==='TimeoutError'||error.name==='AbortError'?'Google Maps phản hồi quá lâu (trên 23 giây). M thử lại sau hoặc nhập thủ công.':(error.message||'Không thể lấy thông tin từ link này. M thử link Chia sẻ Google Maps.')}
   finally{els.getMapsInfo.disabled=false;els.getMapsInfo.textContent='✨ Lấy thông tin từ Google Maps'}
 }
 
