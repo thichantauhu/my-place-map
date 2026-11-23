@@ -319,14 +319,14 @@ async function readMapsRenderedPage(link) {
       if(!allowedMapsHost(host)&&!host.endsWith('.gstatic.com')&&!host.endsWith('.googleusercontent.com'))return route.abort();
       return route.continue();
     });
-    await page.goto(link,{waitUntil:'domcontentloaded',timeout:25000});
-    await page.waitForTimeout(3500);
+    await page.goto(link,{waitUntil:'domcontentloaded',timeout:11000});
+    await page.waitForTimeout(1200);
     // Some Maps pages show a cookie-consent dialog before the details.
     for(const label of ['Accept all','Chấp nhận tất cả','Tôi đồng ý']) {
       const btn=page.getByRole('button',{name:label,exact:true});
       if(await btn.count()){await btn.first().click({timeout:1200}).catch(()=>{});break}
     }
-    await page.waitForTimeout(1800);
+    await page.waitForTimeout(500);
     const result=await page.evaluate(()=>{
       const txt=el=>(el?.innerText||el?.textContent||'').trim();
       const name=txt(document.querySelector('h1'));
@@ -375,7 +375,7 @@ async function googleMapsPlace(res,url) {
     let html='';
     for(let i=0;i<7;i++){
       if(!allowedMapsHost(current.hostname.toLowerCase()))throw new Error('REDIRECT_HOST_NOT_ALLOWED');
-      const response=await fetch(current,{redirect:'manual',headers:{'User-Agent':'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124 Safari/537.36','Accept-Language':'vi-VN,vi;q=0.9,en;q=0.8','Accept':'text/html,application/xhtml+xml'}});
+      const response=await fetch(current,{signal:AbortSignal.timeout(6500),redirect:'manual',headers:{'User-Agent':'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124 Safari/537.36','Accept-Language':'vi-VN,vi;q=0.9,en;q=0.8','Accept':'text/html,application/xhtml+xml'}});
       const location=response.headers.get('location');
       if(location){current=new URL(location,current);continue}
       html=await response.text().catch(()=>'');break;
@@ -386,10 +386,10 @@ async function googleMapsPlace(res,url) {
     let address=cleanMapsText(htmlMeta(html,'og:description'));
     if(isGenericMapsText(address) || /find local businesses|driving directions/i.test(address))address='';
     if(!address)address=extractAddressFromHtml(html);
-    if(!address&&coords)address=await reverseAddressFromCoords(coords.lat,coords.lng);
+    // Do not substitute a nearby street address for the exact Google Maps business address.
     let hours=extractDailyHours(html);
     try {
-      const rendered=await readMapsRenderedPage(current.href);
+      const rendered=await Promise.race([readMapsRenderedPage(current.href),new Promise((_,reject)=>setTimeout(()=>reject(new Error('BROWSER_TIMEOUT')),14000))]);
       if(rendered.name && !isGenericMapsText(rendered.name))name=rendered.name;
       if(rendered.address)address=rendered.address;
       if(rendered.openingHours&&rendered.closingHours)hours=rendered;
