@@ -14,3 +14,6 @@
 .weekly-hours-day input{width:100%;min-width:0;box-sizing:border-box;padding:7px 4px}
 
 .maps-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.maps-actions .maps-open-link{display:inline-flex;align-items:center;justify-content:center;text-decoration:none;border:1px solid #cbd5e1;border-radius:9px;padding:9px 12px;font-size:13px;color:inherit;min-height:36px;box-sizing:border-box}.maps-actions .maps-open-link:hover{background:#f1f5f9}
+
+/* Keep opening and closing time side by side on mobile and desktop. */
+.single-hours{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px;width:100%;align-items:end}.single-hours label{display:flex;flex-direction:column;gap:5px;min-width:0}.single-hours input[type=time]{width:100%;min-width:0;max-width:100%}
