@@ -408,9 +408,9 @@ async function osmPlaceDetails(name,coords){
   const key=osmNameKey(name);
   const candidates=(data.elements||[]).map(el=>{
     const t=el.tags||{},lat=el.lat??el.center?.lat,lng=el.lon??el.center?.lon;
-    const distance=osmDistance(coords.lat,coords.lng,lat,lng);
+    const distance=Number.isFinite(lat)&&Number.isFinite(lng)?osmDistance(coords.lat,coords.lng,lat,lng):Infinity;
     const names=[t.name,t['name:vi'],t['name:en'],t.brand].filter(Boolean).map(osmNameKey);
-    const matching=key&&names.some(n=>n===key||n.includes(key)&&key.length>=7||key.includes(n)&&n.length>=7);
+    const matching=key&&names.some(n=>n===key||(n.includes(key)&&key.length>=7)||(key.includes(n)&&n.length>=7));
     return {t,distance,matching};
   }).filter(x=>Number.isFinite(x.distance)&&x.distance<=90&&x.matching).sort((a,b)=>a.distance-b.distance);
   const best=candidates[0];
