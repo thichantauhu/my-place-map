@@ -17,3 +17,5 @@
 
 /* Keep opening and closing time side by side on mobile and desktop. */
 .single-hours{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px;width:100%;align-items:end}.single-hours label{display:flex;flex-direction:column;gap:5px;min-width:0}.single-hours input[type=time]{width:100%;min-width:0;max-width:100%}
+
+.single-hours input[type=text]{width:100%;min-width:0;max-width:100%;font-variant-numeric:tabular-nums}
