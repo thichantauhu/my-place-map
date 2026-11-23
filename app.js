@@ -1,9 +1,9 @@
 const STORAGE_KEY='my-place-map-places-v2';
 const GEOCODER='https://nominatim.openstreetmap.org';
 const ARCGIS='https://geocode-api.arcgis.com/arcgis/rest/services/World/GeocodeServer/findAddressCandidates';
-let places=loadPlaces(),currentLocation=null,activeFilter='all',map,userMarker,userAccuracy,placeMarkers=new Map(),roadDistances=new Map(),roadDistanceLoading=false;
+let places=loadPlaces(),currentLocation=null,activeFilter='all',placeSearchQuery='',map,userMarker,userAccuracy,placeMarkers=new Map(),roadDistances=new Map(),roadDistanceLoading=false;
 let pickerMap=null,pickerMarker=null,pickerPosition=null;
-const els={placeList:document.getElementById('placeList'),countText:document.getElementById('countText'),radius:document.getElementById('radiusSelect'),locate:document.getElementById('locateBtn'),add:document.getElementById('addBtn'),dialog:document.getElementById('placeDialog'),form:document.getElementById('placeForm'),closePlace:document.getElementById('closePlaceBtn'),cancelPlace:document.getElementById('cancelPlaceBtn'),name:document.getElementById('nameInput'),address:document.getElementById('addressInput'),searchAddress:document.getElementById('searchAddressBtn'),addressResults:document.getElementById('addressResults'),pickLocation:document.getElementById('pickLocationBtn'),selectedLocation:document.getElementById('selectedLocation'),category:document.getElementById('categoryInput'),note:document.getElementById('noteInput'),link:document.getElementById('linkInput'),googleMapsUrl:document.getElementById('googleMapsUrlInput'),getMapsInfo:document.getElementById('getMapsInfoBtn'),openGoogleMaps:document.getElementById('openGoogleMapsBtn'),mapsInfoStatus:document.getElementById('mapsInfoStatus'),openingHours:document.getElementById('openingHoursInput'),closingHours:document.getElementById('closingHoursInput'),coord:document.getElementById('coordInput'),lat:document.getElementById('latInput'),lng:document.getElementById('lngInput'),want:document.getElementById('wantInput'),error:document.getElementById('formError'),mapHint:document.getElementById('mapHint'),pickerOverlay:document.getElementById('pickerOverlay'),pickerCoords:document.getElementById('pickerCoords'),confirmPicker:document.getElementById('confirmPickerBtn'),closePicker:document.getElementById('closePickerBtn'),ratingDialog:document.getElementById('ratingDialog'),ratingName:document.getElementById('ratingName'),ratingAddress:document.getElementById('ratingAddress'),ratingOptions:document.getElementById('ratingOptions'),saveBtn:document.getElementById('saveBtn'),ratingError:document.getElementById('ratingError'),closeRating:document.getElementById('closeRatingBtn')};
+const els={placeSearch:document.getElementById('placeSearchInput'),togglePlaceSearch:document.getElementById('togglePlaceSearchBtn'),placeList:document.getElementById('placeList'),countText:document.getElementById('countText'),radius:document.getElementById('radiusSelect'),locate:document.getElementById('locateBtn'),add:document.getElementById('addBtn'),dialog:document.getElementById('placeDialog'),form:document.getElementById('placeForm'),closePlace:document.getElementById('closePlaceBtn'),cancelPlace:document.getElementById('cancelPlaceBtn'),name:document.getElementById('nameInput'),address:document.getElementById('addressInput'),searchAddress:document.getElementById('searchAddressBtn'),addressResults:document.getElementById('addressResults'),pickLocation:document.getElementById('pickLocationBtn'),selectedLocation:document.getElementById('selectedLocation'),category:document.getElementById('categoryInput'),note:document.getElementById('noteInput'),link:document.getElementById('linkInput'),googleMapsUrl:document.getElementById('googleMapsUrlInput'),getMapsInfo:document.getElementById('getMapsInfoBtn'),openGoogleMaps:document.getElementById('openGoogleMapsBtn'),mapsInfoStatus:document.getElementById('mapsInfoStatus'),openingHours:document.getElementById('openingHoursInput'),closingHours:document.getElementById('closingHoursInput'),coord:document.getElementById('coordInput'),lat:document.getElementById('latInput'),lng:document.getElementById('lngInput'),want:document.getElementById('wantInput'),error:document.getElementById('formError'),mapHint:document.getElementById('mapHint'),pickerOverlay:document.getElementById('pickerOverlay'),pickerCoords:document.getElementById('pickerCoords'),confirmPicker:document.getElementById('confirmPickerBtn'),closePicker:document.getElementById('closePickerBtn'),ratingDialog:document.getElementById('ratingDialog'),ratingName:document.getElementById('ratingName'),ratingAddress:document.getElementById('ratingAddress'),ratingOptions:document.getElementById('ratingOptions'),saveBtn:document.getElementById('saveBtn'),ratingError:document.getElementById('ratingError'),closeRating:document.getElementById('closeRatingBtn')};
 const categoryInfo={food:{icon:'🍜',label:'Ăn uống'},fun:{icon:'🎮',label:'Vui chơi'},cafe:{icon:'☕',label:'Cafe'},other:{icon:'📌',label:'Khác'}};
 const ratingInfo={like:{icon:'❤️',label:'Thích'},neutral:{icon:'🙂',label:'Bình thường'},dislike:{icon:'👿',label:'Không thích'}};
 let ratingPlaceId=null,editingPlaceId=null;
@@ -63,6 +63,10 @@ function filteredPlaces(){
   const radius=Number(els.radius.value);
   return places.map(p=>({...p,distance:currentLocation&&roadDistances.has(p.id)?roadDistances.get(p.id):null}))
     .filter(p=>{
+      if(placeSearchQuery){
+        const text=[p.name,p.address,p.note,categoryInfo[p.category]?.label].join(' ').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
+        if(!text.includes(placeSearchQuery))return false;
+      }
       if(activeFilter==='want'&&!p.want)return false;
       if(['food','fun','cafe'].includes(activeFilter)&&p.category!==activeFilter)return false;
       if(currentLocation&&radius<999&&p.distance!=null&&p.distance>radius)return false;
@@ -374,6 +378,18 @@ function useLocation(){
   );
 }
 
+els.togglePlaceSearch.onclick=()=>{
+  const show=els.placeSearch.hidden;
+  els.placeSearch.hidden=!show;
+  els.togglePlaceSearch.setAttribute('aria-expanded',String(show));
+  if(show)els.placeSearch.focus();
+  else{els.placeSearch.value='';placeSearchQuery='';render()}
+};
+els.placeSearch.addEventListener('input',()=>{
+  placeSearchQuery=els.placeSearch.value.trim().normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
+  render();
+});
+els.placeSearch.addEventListener('keydown',e=>{if(e.key==='Escape'){els.togglePlaceSearch.click();els.togglePlaceSearch.focus()}});
 els.add.onclick=()=>openAddDialog();els.closePlace.onclick=closePlaceDialog;els.cancelPlace.onclick=closePlaceDialog;els.form.addEventListener('submit',savePlace);els.searchAddress.onclick=searchAddress;els.getMapsInfo.onclick=getGoogleMapsInfo;els.googleMapsUrl.addEventListener('input',updateGoogleMapsLink);els.pickLocation.onclick=openPicker;els.closePicker.onclick=closePicker;els.confirmPicker.onclick=confirmPicker;els.locate.onclick=useLocation;els.radius.onchange=render;
 document.querySelectorAll('.chip').forEach(b=>b.onclick=()=>{document.querySelectorAll('.chip').forEach(x=>x.classList.remove('active'));b.classList.add('active');activeFilter=b.dataset.filter;render()});
 els.ratingOptions?.querySelectorAll('[data-rating]').forEach(b=>b.onclick=()=>{const p=places.find(x=>x.id===ratingPlaceId);setRating(p?.rating===b.dataset.rating?null:b.dataset.rating)});els.closeRating?.addEventListener('click',()=>els.ratingDialog.close());
