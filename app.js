@@ -314,7 +314,7 @@ function useLocation(){
   );
 }
 
-els.add.onclick=()=>openAddDialog();els.closePlace.onclick=closePlaceDialog;els.cancelPlace.onclick=closePlaceDialog;els.form.addEventListener('submit',savePlace);els.searchAddress.onclick=searchAddress;els.getMapsInfo.onclick=getGoogleMapsInfo;els.pickLocation.onclick=openPicker;els.closePicker.onclick=closePicker;els.confirmPicker.onclick=confirmPicker;els.locate.onclick=useLocation;els.radius.onchange=render;
+els.add.onclick=()=>openAddDialog();els.closePlace.onclick=closePlaceDialog;els.cancelPlace.onclick=closePlaceDialog;els.form.addEventListener('submit',savePlace);els.searchAddress.onclick=searchAddress;els.getMapsInfo.onclick=getGoogleMapsInfo;els.googleMapsUrl.addEventListener('input',updateGoogleMapsLink);els.pickLocation.onclick=openPicker;els.closePicker.onclick=closePicker;els.confirmPicker.onclick=confirmPicker;els.locate.onclick=useLocation;els.radius.onchange=render;
 document.querySelectorAll('.chip').forEach(b=>b.onclick=()=>{document.querySelectorAll('.chip').forEach(x=>x.classList.remove('active'));b.classList.add('active');activeFilter=b.dataset.filter;render()});
 els.ratingOptions?.querySelectorAll('[data-rating]').forEach(b=>b.onclick=()=>{const p=places.find(x=>x.id===ratingPlaceId);setRating(p?.rating===b.dataset.rating?null:b.dataset.rating)});els.closeRating?.addEventListener('click',()=>els.ratingDialog.close());
 initMap();render();syncRemote();setTimeout(useLocation,250);
