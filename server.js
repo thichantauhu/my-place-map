@@ -383,11 +383,16 @@ async function googleMapsPlace(res,url) {
       html=await response.text().catch(()=>'');break;
     }
   }catch(error){fetchError=error;console.warn('Maps metadata unavailable:',error.message)}
-  const coords=extractMapsCoords(current.href)||extractMapsCoords(html);
-  let name=cleanMapsText(htmlMeta(html,'og:title'));
-  if(isGenericMapsText(name))name=cleanMapsText(nameFromMapsUrl(current.href))||pathName;
+  // For feature-ID links, page HTML often contains unrelated map viewport coordinates.
+  // Only trust explicit place coordinates in the URL, never the first coordinate in HTML.
+  const featureIdLink=/\/data=[^?#]*!1s0x[0-9a-f]+:0x[0-9a-f]+/i.test(raw);
+  const explicitPlaceCoords=current.href.match(/!3d(-?\d+(?:\.\d+)?)!4d(-?\d+(?:\.\d+)?)/);
+  const coords=explicitPlaceCoords?extractMapsCoords(explicitPlaceCoords[0]):(!featureIdLink?extractMapsCoords(current.href):null);
+  // The /maps/place/ segment is the name chosen by the user; metadata may describe
+  // the map viewport or another business and must not override it.
+  const name=pathName||cleanMapsText(nameFromMapsUrl(current.href))||cleanMapsText(htmlMeta(html,'og:title'));
   if(!name&&!coords)return send(res,422,{error:'MAPS_INFO_NOT_FOUND',message:'Không tìm thấy tên hoặc tọa độ từ link Google Maps.'});
-  const result={name,address:'',openingHours:'',closingHours:'',weeklyHours:[],partial:!coords,source:'google-maps-link'};
+  const result={name,address:'',openingHours:'',closingHours:'',weeklyHours:[],partial:!coords,source:'google-maps-link',message:!coords?'Link này chỉ chứa mã địa điểm, chưa xác minh được tọa độ chính xác.':''};
   if(coords)Object.assign(result,coords);
   if(fetchError)result.partial=true;
   return send(res,200,result);
