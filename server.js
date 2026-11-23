@@ -279,7 +279,7 @@ function extractAddressFromHtml(html) {
   ];
   for(const pattern of patterns)for(const m of source.matchAll(pattern)) {
     const v=m[0].replace(/\s+/g,' ').trim();
-    if(!/google maps|find local businesses|driving directions|javascript|function|google sans|roboto|helvetica|font|px\\/|css/i.test(v)&&v.length<180&&/[,，]/.test(v))matches.push(v);
+    if(!/google maps|find local businesses|driving directions|javascript|function|google sans|roboto|helvetica|font|px|css/i.test(v)&&v.length<180&&/[,，]/.test(v))matches.push(v);
   }
   return matches.sort((a,b)=>b.length-a.length)[0]||'';
 }
@@ -386,13 +386,13 @@ async function googleMapsPlace(res,url) {
     let address=cleanMapsText(htmlMeta(html,'og:description'));
     if(isGenericMapsText(address) || /find local businesses|driving directions/i.test(address))address='';
     if(!address)address=extractAddressFromHtml(html);
-    if(/google sans|roboto|helvetica|font|\\d+px\\//i.test(address))address='';
+    if(/google sans|roboto|helvetica|font|\\d+px/i.test(address))address='';
     // Do not substitute a nearby street address for the exact Google Maps business address.
     let hours=extractDailyHours(html);
     try {
       const rendered=await Promise.race([readMapsRenderedPage(current.href),new Promise((_,reject)=>setTimeout(()=>reject(new Error('BROWSER_TIMEOUT')),14000))]);
       if(rendered.name && !isGenericMapsText(rendered.name))name=rendered.name;
-      if(rendered.address&&!/google sans|roboto|helvetica|font|\\d+px\\//i.test(rendered.address))address=rendered.address;
+      if(rendered.address&&!/google sans|roboto|helvetica|font|\\d+px/i.test(rendered.address))address=rendered.address;
       if(rendered.weeklyHours?.some(x=>x.open||x.close))hours=rendered;
       console.info('Google Maps extraction:',JSON.stringify({addressFound:!!rendered.address,daysFound:rendered.daysFound,finalUrl:rendered.finalUrl}));
     } catch(error) { console.warn('Google Maps browser extraction unavailable:',error.message); }
