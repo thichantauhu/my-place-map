@@ -150,6 +150,21 @@ function fillHours(opening='',closing=''){
   els.openingHours.value=hours.open;
   els.closingHours.value=hours.close;
 }
+function autoFormatHourInput(input){
+  input.addEventListener('input',()=>{
+    const old=input.value;
+    const digits=old.replace(/\D/g,'').slice(0,4);
+    const next=digits.length>2?digits.slice(0,2)+':'+digits.slice(2):digits;
+    if(old!==next)input.value=next;
+  });
+  input.addEventListener('blur',()=>{
+    const digits=input.value.replace(/\D/g,'');
+    if(digits.length===3)input.value='0'+digits[0]+':'+digits.slice(1);
+    else if(digits.length===4)input.value=digits.slice(0,2)+':'+digits.slice(2);
+  });
+}
+autoFormatHourInput(els.openingHours);
+autoFormatHourInput(els.closingHours);
 function updateGoogleMapsLink(){
   const raw=els.googleMapsUrl.value.trim();
   let valid=false;
