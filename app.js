@@ -165,12 +165,12 @@ async function getGoogleMapsInfo(){
     const data=await response.json().catch(()=>({}));
     if(!response.ok)throw new Error(data.message||'Không đọc được link này.');
     if(data.name)els.name.value=data.name;
-    // Never fill an unverified address extracted from Google Maps page markup.
+    if(data.source==='OpenStreetMap'&&data.address)els.address.value=data.address;
     if(validCoord(Number(data.lat),Number(data.lng)))syncCoords(Number(data.lat),Number(data.lng));
-    // Keep the user's manually entered seven-day schedule untouched.
+    if(data.source==='OpenStreetMap'&&Array.isArray(data.weeklyHours)&&data.weeklyHours.some(x=>x.open||x.close))fillWeeklyHours(data.weeklyHours);
 
-    const found=[data.name&&'tên',validCoord(Number(data.lat),Number(data.lng))&&'tọa độ'].filter(Boolean);
-    els.mapsInfoStatus.textContent=found.length?'✓ Đã lấy: '+found.join(', ')+'. Bấm “Mở Google Maps” để sao chép địa chỉ và giờ T2–CN.':'Không tìm thấy tên hoặc tọa độ. Bấm “Mở Google Maps” để nhập thủ công.';
+    const found=[data.name&&'tên',validCoord(Number(data.lat),Number(data.lng))&&'tọa độ',data.source==='OpenStreetMap'&&data.address&&'địa chỉ OSM',data.source==='OpenStreetMap'&&data.weeklyHours?.some(x=>x.open||x.close)&&'giờ T2–CN từ OSM'].filter(Boolean);
+    els.mapsInfoStatus.textContent=found.length?'✓ Đã lấy: '+found.join(', ')+'. '+(data.source==='OpenStreetMap'?'Dữ liệu OSM có thể thiếu hoặc khác Google Maps, m kiểm tra lại nhé.':'OSM không có dữ liệu khớp; m có thể mở Google Maps để bổ sung địa chỉ và giờ.'):'Không tìm thấy thông tin tự động.';
   }catch(error){els.mapsInfoStatus.textContent=error.name==='TimeoutError'||error.name==='AbortError'?'Google Maps phản hồi quá lâu (trên 23 giây). M thử lại sau hoặc nhập thủ công.':(error.message||'Không thể lấy thông tin từ link này. M thử link Chia sẻ Google Maps.')}
   finally{els.getMapsInfo.disabled=false;els.getMapsInfo.textContent='✨ Lấy tên & tọa độ'}
 }
