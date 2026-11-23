@@ -160,9 +160,9 @@ async function getGoogleMapsInfo(){
     if(data.address)els.address.value=data.address;
     if(validCoord(Number(data.lat),Number(data.lng)))syncCoords(Number(data.lat),Number(data.lng));
     if(Array.isArray(data.weeklyHours)&&data.weeklyHours.length===7)fillWeeklyHours(data.weeklyHours);
-    else if(data.openingHours||data.closingHours)fillWeeklyHours(WEEK_DAYS.map(()=>({open:data.openingHours||'',close:data.closingHours||''})));
+    else fillWeeklyHours([]);
 
-    const found=[data.name&&'tên',data.address&&'địa chỉ',validCoord(Number(data.lat),Number(data.lng))&&'tọa độ',data.openingHours&&'giờ mở cửa',data.closingHours&&'giờ đóng cửa'].filter(Boolean);
+    const found=[data.name&&'tên',data.address&&'địa chỉ',validCoord(Number(data.lat),Number(data.lng))&&'tọa độ',Array.isArray(data.weeklyHours)&&data.weeklyHours.some(x=>x.open||x.close)&&'lịch T2–CN'].filter(Boolean);
     els.mapsInfoStatus.textContent=found.length?'✓ Đã lấy được: '+found.join(', ')+'. M kiểm tra và chỉnh sửa lại nếu cần.':'Không tìm thấy thông tin tự động. M có thể nhập thủ công.';
   }catch(error){els.mapsInfoStatus.textContent=error.message||'Không thể lấy thông tin từ link này. M thử link Chia sẻ Google Maps.'}
   finally{els.getMapsInfo.disabled=false;els.getMapsInfo.textContent='✨ Lấy thông tin từ Google Maps'}
