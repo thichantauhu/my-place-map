@@ -132,7 +132,7 @@ function openPlaceInfo(id){
     '<h4>'+escapeHtml((categoryInfo[p.category]?.icon||'📌')+' '+p.name)+'</h4>'+
     row('Danh mục',categoryInfo[p.category]?.label||'Khác')+
     row('Địa chỉ',p.address)+
-    row('Giờ mở cửa (ca 1)',hours.open)+row('Giờ đóng cửa (ca 1)',hours.close)+(hours.open2||hours.close2?row('Giờ mở cửa (ca 2)',hours.open2)+row('Giờ đóng cửa (ca 2)',hours.close2):'')+
+    row('Giờ mở cửa',hours.open+(hours.open2?' / '+hours.open2:''))+row('Giờ đóng cửa',hours.close+(hours.close2?' / '+hours.close2:''))+
     row('Tọa độ',validCoord(Number(p.lat),Number(p.lng))?Number(p.lat).toFixed(6)+', '+Number(p.lng).toFixed(6):'')+
     row('Ghi chú',p.note)+
     row('Đánh giá',p.rating?ratingInfo[p.rating]?.label:'Chưa đánh giá')+
