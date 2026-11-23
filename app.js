@@ -199,11 +199,11 @@ async function getGoogleMapsInfo(){
     if(!response.ok)throw new Error(data.message||'Không đọc được link này.');
     if(data.name)els.name.value=data.name;
 
-    if(validCoord(Number(data.lat),Number(data.lng)))syncCoords(Number(data.lat),Number(data.lng));
+    if(data.lat!=null&&data.lng!=null&&validCoord(Number(data.lat),Number(data.lng)))syncCoords(Number(data.lat),Number(data.lng));
 
 
-    const found=[data.name&&'tên',validCoord(Number(data.lat),Number(data.lng))&&'tọa độ'].filter(Boolean);
-    els.mapsInfoStatus.textContent=found.length?'✓ Đã lấy: '+found.join(', ')+'. Địa chỉ và giờ hoạt động có thể nhập thủ công.':'Không tìm thấy thông tin tự động.';
+    const found=[data.name&&'tên',data.lat!=null&&data.lng!=null&&validCoord(Number(data.lat),Number(data.lng))&&'tọa độ'].filter(Boolean);
+    els.mapsInfoStatus.textContent=found.length?'✓ Đã lấy: '+found.join(', ')+'. '+(data.partial?'Chưa xác minh được tọa độ từ link này; m chọn vị trí chính xác trên bản đồ nhé.':'Địa chỉ và giờ hoạt động có thể nhập thủ công.'):'Không tìm thấy thông tin tự động.';
   }catch(error){els.mapsInfoStatus.textContent=error.name==='TimeoutError'||error.name==='AbortError'?'Google Maps phản hồi quá lâu (trên 11 giây). M thử lại sau hoặc nhập thủ công.':(error.message||'Không thể lấy thông tin từ link này. M thử link Chia sẻ Google Maps.')}
   finally{els.getMapsInfo.disabled=false;els.getMapsInfo.textContent='✨ Lấy tên & tọa độ'}
 }
