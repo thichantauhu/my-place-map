@@ -358,7 +358,9 @@ async function readMapsRenderedPage(link) {
         }
       }
       const periods=rows.map(t=>t.match(time)).filter(Boolean).map(m=>({open:m[1].padStart(5,'0'),close:m[2].padStart(5,'0')}));
-      return {openingHours:periods.length?periods.map(x=>x.open).sort()[0]:'',closingHours:periods.length?periods.map(x=>x.close).sort().at(-1):'',daysFound:periods.length};
+      const labels=[/^(?:Thứ\\s*(?:Hai|2)|Monday)/i,/^(?:Thứ\\s*(?:Ba|3)|Tuesday)/i,/^(?:Thứ\\s*(?:Tư|4)|Wednesday)/i,/^(?:Thứ\\s*(?:Năm|5)|Thursday)/i,/^(?:Thứ\\s*(?:Sáu|6)|Friday)/i,/^(?:Thứ\\s*(?:Bảy|7)|Saturday)/i,/^(?:Chủ\\s*Nhật|Sunday)/i];
+      const weeklyHours=labels.map(re=>{const row=rows.find(x=>re.test(x));const m=row?.match(time);return {open:m?m[1].padStart(5,'0'):'',close:m?m[2].padStart(5,'0'):''}});
+      return {openingHours:periods.length?periods.map(x=>x.open).sort()[0]:'',closingHours:periods.length?periods.map(x=>x.close).sort().at(-1):'',weeklyHours,daysFound:periods.length};
     });
     return {name:result.name,address:result.address,...hours,finalUrl:page.url()};
   } finally {await context.close().catch(()=>{})}
@@ -391,7 +393,7 @@ async function googleMapsPlace(res,url) {
       if(rendered.address)address=rendered.address;
       if(rendered.openingHours&&rendered.closingHours)hours=rendered;
     } catch(error) { console.warn('Google Maps browser extraction unavailable:',error.message); }
-    const result={name,address,openingHours:hours.openingHours,closingHours:hours.closingHours};
+    const result={name,address,openingHours:hours.openingHours,closingHours:hours.closingHours,weeklyHours:hours.weeklyHours||[]};
     if(coords)Object.assign(result,coords);
     if(!name&&!address&&!coords)return send(res,422,{error:'MAPS_INFO_NOT_FOUND',message:'Google Maps không cung cấp đủ thông tin cho link này. M có thể nhập thủ công.'});
     return send(res,200,result);
