@@ -252,7 +252,7 @@ async function savePlace(e){
       if(currentLocation)updateRoadDistances();
       els.mapHint.textContent='✏️ Đã cập nhật toàn bộ thông tin địa điểm.';
     }else{
-      const place=normalizePlace({id:window.crypto?.randomUUID?.()||`${Date.now()}-${Math.random()}`,name,address,category:els.category.value,note:els.note.value.trim(),link:els.link.value.trim(),openingHours:els.openingHours.value.trim(),closingHours:els.closingHours.value.trim(),lat:c.lat,lng:c.lng,want:els.want.checked,rating:null,createdAt:Date.now()});
+      const place=normalizePlace({id:window.crypto?.randomUUID?.()||`${Date.now()}-${Math.random()}`,name,address,category:els.category.value,note:els.note.value.trim(),link:els.link.value.trim(),openingHours:serializeWeeklyHours(),closingHours:'',lat:c.lat,lng:c.lng,want:els.want.checked,rating:null,createdAt:Date.now()});
       await api('/api/places',{method:'POST',body:JSON.stringify(place)});
       places.push(place);
       els.radius.value='999';
