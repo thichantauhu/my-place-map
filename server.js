@@ -383,20 +383,9 @@ async function googleMapsPlace(res,url) {
     const coords=extractMapsCoords(current.href)||extractMapsCoords(html);
     let name=cleanMapsText(htmlMeta(html,'og:title'));
     if(isGenericMapsText(name))name=cleanMapsText(nameFromMapsUrl(current.href));
-    let address=cleanMapsText(htmlMeta(html,'og:description'));
-    if(isGenericMapsText(address) || /find local businesses|driving directions/i.test(address))address='';
-    if(!address)address=extractAddressFromHtml(html);
-    if(/google sans|roboto|helvetica|font|\\d+px/i.test(address))address='';
-    // Do not substitute a nearby street address for the exact Google Maps business address.
-    let hours=extractDailyHours(html);
-    try {
-      const rendered=await Promise.race([readMapsRenderedPage(current.href),new Promise((_,reject)=>setTimeout(()=>reject(new Error('BROWSER_TIMEOUT')),14000))]);
-      if(rendered.name && !isGenericMapsText(rendered.name))name=rendered.name;
-      if(rendered.address&&!/google sans|roboto|helvetica|font|\\d+px/i.test(rendered.address))address=rendered.address;
-      if(rendered.weeklyHours?.some(x=>x.open||x.close))hours=rendered;
-      console.info('Google Maps extraction:',JSON.stringify({addressFound:!!rendered.address,daysFound:rendered.daysFound,finalUrl:rendered.finalUrl}));
-    } catch(error) { console.warn('Google Maps browser extraction unavailable:',error.message); }
-    const result={name,address,openingHours:hours.openingHours,closingHours:hours.closingHours,weeklyHours:hours.weeklyHours||[]};
+    // HTML metadata is not a trustworthy source for the exact address or weekly hours.
+    // Avoid launching a resource-heavy headless browser on Render Free.
+    const result={name,address:'',openingHours:'',closingHours:'',weeklyHours:[]};
     if(coords)Object.assign(result,coords);
     if(!name&&!address&&!coords)return send(res,422,{error:'MAPS_INFO_NOT_FOUND',message:'Google Maps không cung cấp đủ thông tin cho link này. M có thể nhập thủ công.'});
     return send(res,200,result);
