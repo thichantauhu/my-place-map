@@ -296,6 +296,73 @@ async function reverseAddressFromCoords(lat,lng) {
   } catch(error) { console.warn('OSM reverse geocode failed:',error.message); }
   return '';
 }
+
+let mapsBrowserPromise=null;
+async function getMapsBrowser() {
+  if(!mapsBrowserPromise) {
+    mapsBrowserPromise=require('playwright').chromium.launch({
+      headless:true,
+      args:['--no-sandbox','--disable-dev-shm-usage','--disable-gpu','--no-zygote','--single-process']
+    }).catch(error=>{mapsBrowserPromise=null;throw error});
+  }
+  return mapsBrowserPromise;
+}
+async function readMapsRenderedPage(link) {
+  const browser=await getMapsBrowser();
+  const context=await browser.newContext({locale:'vi-VN',timezoneId:'Asia/Ho_Chi_Minh',viewport:{width:1280,height:850}});
+  const page=await context.newPage();
+  try {
+    await page.route('**/*',route=>{
+      const req=route.request(),kind=req.resourceType(),host=new URL(req.url()).hostname;
+      if(['image','font','media'].includes(kind))return route.abort();
+      if(!allowedMapsHost(host)&&!host.endsWith('.gstatic.com')&&!host.endsWith('.googleusercontent.com'))return route.abort();
+      return route.continue();
+    });
+    await page.goto(link,{waitUntil:'domcontentloaded',timeout:25000});
+    await page.waitForTimeout(3500);
+    // Some Maps pages show a cookie-consent dialog before the details.
+    for(const label of ['Accept all','Chấp nhận tất cả','Tôi đồng ý']) {
+      const btn=page.getByRole('button',{name:label,exact:true});
+      if(await btn.count()){await btn.first().click({timeout:1200}).catch(()=>{});break}
+    }
+    await page.waitForTimeout(1800);
+    const result=await page.evaluate(()=>{
+      const txt=el=>(el?.innerText||el?.textContent||'').trim();
+      const name=txt(document.querySelector('h1'));
+      const candidates=[...document.querySelectorAll('[data-item-id="address"],[data-item-id^="address"],button[aria-label^="Địa chỉ:"],button[aria-label^="Address:"]')];
+      const address=candidates.map(el=>el.getAttribute('aria-label')||txt(el))
+        .map(v=>v.replace(/^(Địa chỉ|Address):\s*/i,'').trim())
+        .find(v=>v.length>7)||'';
+      const button=[...document.querySelectorAll('button')].find(el=>/giờ mở cửa|giờ hoạt động|opening hours|hours|đóng cửa|mở cửa/i.test(el.getAttribute('aria-label')||'') && (el.getAttribute('aria-expanded')!==null || el.closest('[data-item-id]')));
+      return {name,address,buttonText:button?.getAttribute('aria-label')||'',bodyText:document.body.innerText.slice(0,12000)};
+    });
+    // Click the schedule disclosure and collect the visible seven-day table.
+    const toggles=page.locator('button[aria-label*="giờ"],button[aria-label*="Giờ"],button[aria-label*="hours"],button[aria-label*="Hours"],button[aria-label*="mở cửa"],button[aria-label*="đóng cửa"]');
+    for(let i=0;i<Math.min(await toggles.count(),8);i++){
+      const button=toggles.nth(i);
+      try{
+        const label=await button.getAttribute('aria-label')||'';
+        if(/giờ|hours|mở cửa|đóng cửa/i.test(label)){await button.click({timeout:1500});break}
+      }catch(_){}
+    }
+    await page.waitForTimeout(500);
+    const hours=await page.evaluate(()=>{
+      const day=/^(Thứ\s*(?:Hai|Ba|Tư|Năm|Sáu|Bảy|2|3|4|5|6|7)|Chủ\s*Nhật|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)/i;
+      const time=/(\d{1,2}:\d{2})\s*(?:–|—|−|-)\s*(\d{1,2}:\d{2})/;
+      const rows=[...document.querySelectorAll('tr,[role="row"]')].map(el=>el.innerText.trim()).filter(t=>day.test(t)&&time.test(t));
+      if(!rows.length){
+        const lines=document.body.innerText.split('\n').map(x=>x.trim()).filter(Boolean);
+        for(let i=0;i<lines.length-1;i++)if(day.test(lines[i])){
+          const candidate=lines.slice(i,i+3).join(' ');
+          if(time.test(candidate))rows.push(candidate);
+        }
+      }
+      const periods=rows.map(t=>t.match(time)).filter(Boolean).map(m=>({open:m[1].padStart(5,'0'),close:m[2].padStart(5,'0')}));
+      return {openingHours:periods.length?periods.map(x=>x.open).sort()[0]:'',closingHours:periods.length?periods.map(x=>x.close).sort().at(-1):'',daysFound:periods.length};
+    });
+    return {name:result.name,address:result.address,...hours,finalUrl:page.url()};
+  } finally {await context.close().catch(()=>{})}
+}
 async function googleMapsPlace(res,url) {
   const raw=(url.searchParams.get('url')||'').trim();
   if(!raw||raw.length>2048)return send(res,400,{error:'INVALID_MAPS_URL',message:'Link Google Maps không hợp lệ.'});
@@ -317,7 +384,13 @@ async function googleMapsPlace(res,url) {
     if(isGenericMapsText(address) || /find local businesses|driving directions/i.test(address))address='';
     if(!address)address=extractAddressFromHtml(html);
     if(!address&&coords)address=await reverseAddressFromCoords(coords.lat,coords.lng);
-    const hours=extractDailyHours(html);
+    let hours=extractDailyHours(html);
+    try {
+      const rendered=await readMapsRenderedPage(current.href);
+      if(rendered.name && !isGenericMapsText(rendered.name))name=rendered.name;
+      if(rendered.address)address=rendered.address;
+      if(rendered.openingHours&&rendered.closingHours)hours=rendered;
+    } catch(error) { console.warn('Google Maps browser extraction unavailable:',error.message); }
     const result={name,address,openingHours:hours.openingHours,closingHours:hours.closingHours};
     if(coords)Object.assign(result,coords);
     if(!name&&!address&&!coords)return send(res,422,{error:'MAPS_INFO_NOT_FOUND',message:'Google Maps không cung cấp đủ thông tin cho link này. M có thể nhập thủ công.'});
