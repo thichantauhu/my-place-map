@@ -114,7 +114,34 @@ async function updateRoadDistances(){
 function escapeHtml(v){return String(v??'').replace(/[&<>'"]/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[ch]))}
 function openDirections(lat,lng){window.open(`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(`${lat},${lng}`)}`,'_blank','noopener')}
 function markerIcon(p){const r=ratingInfo[p.rating];const text=categoryInfo[p.category]?.icon||'📌';const ratingClass=r?` rating-${p.rating}`:'';return L.divIcon({className:'place-marker-wrap',html:`<div class="place-marker${ratingClass}" title="${escapeHtml(r?.label||'Đánh giá địa điểm')}">${text}</div>`,iconSize:[38,38],iconAnchor:[19,19],popupAnchor:[0,-18]})}
-function renderMarkers(data){placeMarkers.forEach(m=>m.remove());placeMarkers.clear();data.forEach(p=>{if(!validCoord(Number(p.lat),Number(p.lng)))return;const marker=L.marker([p.lat,p.lng],{icon:markerIcon(p)}).addTo(map);marker.bindPopup(`<div class="popup"><strong>${categoryInfo[p.category]?.icon||'📌'} ${escapeHtml(p.name)}</strong><div>${escapeHtml(categoryInfo[p.category]?.label||'Khác')}</div>${p.rating?`<div class="popup-rating">${ratingInfo[p.rating].icon} ${ratingInfo[p.rating].label}</div>`:''}${p.address?`<div>📍 ${escapeHtml(p.address)}</div>`:''}${p.note?`<p>${escapeHtml(p.note)}</p>`:''}${p.want?'<span>❤️ Muốn đi</span>':''}<br><button class="popup-rate" data-id="${escapeHtml(p.id)}">⭐ Đánh giá</button> <button class="popup-direction" data-lat="${p.lat}" data-lng="${p.lng}">🧭 Chỉ đường</button></div>`);marker.on('popupopen',e=>{const el=e.popup.getElement();el?.querySelector('.popup-rate')?.addEventListener('click',()=>openRating(p.id));el?.querySelector('.popup-direction')?.addEventListener('click',()=>openDirections(Number(p.lat),Number(p.lng)))});placeMarkers.set(p.id,marker)})}
+function renderMarkers(data){placeMarkers.forEach(m=>m.remove());placeMarkers.clear();data.forEach(p=>{if(!validCoord(Number(p.lat),Number(p.lng)))return;const marker=L.marker([p.lat,p.lng],{icon:markerIcon(p)}).addTo(map);marker.bindPopup(`<div class="popup"><strong>${categoryInfo[p.category]?.icon||'📌'} ${escapeHtml(p.name)}</strong><div>${escapeHtml(categoryInfo[p.category]?.label||'Khác')}</div>${p.rating?`<div class="popup-rating">${ratingInfo[p.rating].icon} ${ratingInfo[p.rating].label}</div>`:''}${p.address?`<div>📍 ${escapeHtml(p.address)}</div>`:''}${p.note?`<p>${escapeHtml(p.note)}</p>`:''}${p.want?'<span>❤️ Muốn đi</span>':''}<br><button class="popup-info" data-id="${escapeHtml(p.id)}">ℹ️ Thông tin</button> <button class="popup-rate" data-id="${escapeHtml(p.id)}">⭐ Đánh giá</button> <button class="popup-direction" data-lat="${p.lat}" data-lng="${p.lng}">🧭 Chỉ đường</button></div>`);marker.on('popupopen',e=>{const el=e.popup.getElement();el?.querySelector('.popup-info')?.addEventListener('click',()=>openPlaceInfo(p.id));el?.querySelector('.popup-rate')?.addEventListener('click',()=>openRating(p.id));el?.querySelector('.popup-direction')?.addEventListener('click',()=>openDirections(Number(p.lat),Number(p.lng)))});placeMarkers.set(p.id,marker)})}
+function openPlaceInfo(id){
+  const p=places.find(x=>x.id===id);
+  if(!p)return;
+  document.getElementById('placeInfoDialog')?.remove();
+  const dialog=document.createElement('dialog');
+  dialog.id='placeInfoDialog';
+  dialog.className='place-info-dialog';
+  const hours=legacyHours(p.openingHours,p.closingHours);
+  const row=(label,value)=>'<div class="place-info-row"><b>'+label+'</b><span>'+escapeHtml(value||'Chưa có thông tin')+'</span></div>';
+  dialog.innerHTML='<div class="place-info-head"><h3>ℹ️ Thông tin địa điểm</h3><button type="button" class="secondary info-close" aria-label="Đóng">✕</button></div>'+
+    '<h4>'+escapeHtml((categoryInfo[p.category]?.icon||'📌')+' '+p.name)+'</h4>'+
+    row('Danh mục',categoryInfo[p.category]?.label||'Khác')+
+    row('Địa chỉ',p.address)+
+    row('Giờ mở cửa',hours.open)+row('Giờ đóng cửa',hours.close)+
+    row('Tọa độ',validCoord(Number(p.lat),Number(p.lng))?Number(p.lat).toFixed(6)+', '+Number(p.lng).toFixed(6):'')+
+    row('Ghi chú',p.note)+
+    row('Đánh giá',p.rating?ratingInfo[p.rating]?.label:'Chưa đánh giá')+
+    (p.link?'<div class="place-info-row"><b>Link</b><a href="'+escapeHtml(p.link)+'" target="_blank" rel="noopener noreferrer">Mở liên kết</a></div>':'')+
+    '<div class="place-info-actions"><button type="button" class="primary info-edit">✏️ Chỉnh sửa</button><button type="button" class="secondary info-done">Đóng</button></div>';
+  document.body.appendChild(dialog);
+  const close=()=>dialog.close();
+  dialog.querySelector('.info-close').onclick=close;
+  dialog.querySelector('.info-done').onclick=close;
+  dialog.querySelector('.info-edit').onclick=()=>{close();openEditDialog(id)};
+  dialog.addEventListener('close',()=>dialog.remove(),{once:true});
+  dialog.showModal();
+}
 function ratingBadge(p){return p.rating?`<button type="button" class="rating-badge" data-rating-id="${p.id}">${ratingInfo[p.rating].icon} ${ratingInfo[p.rating].label}</button>`:`<button type="button" class="rating-badge unrated" data-rating-id="${p.id}">⭐ Chưa đánh giá</button>`}
 function render(){const data=filteredPlaces();els.countText.textContent=`${data.length} địa điểm`;els.placeList.innerHTML='';renderMarkers(data);if(!data.length){els.placeList.innerHTML='<div class="empty">Chưa có địa điểm phù hợp. Bấm <b>＋ Thêm địa điểm</b> hoặc nhấp đúp trên bản đồ để lưu.</div>';return}data.forEach(p=>{const icon=categoryInfo[p.category]?.icon||'📌',dist=p.distance==null?(currentLocation?(roadDistanceLoading?'Đang tính đường xe máy…':'Chưa xác định đường đi'):'Chưa xác định khoảng cách'):`${p.distance.toFixed(1)} km đường xe máy từ bạn`,card=document.createElement('article');card.className='place-card';card.id=`place-${p.id}`;card.innerHTML=`<button type="button" class="place-title place-title-button" data-id="${p.id}">${icon} ${escapeHtml(p.name)}</button><div class="place-meta">${escapeHtml(categoryInfo[p.category]?.label||'Khác')} · ${dist}</div>${p.address?`<button type="button" class="place-address place-address-button" data-rating-id="${p.id}">📍 ${escapeHtml(p.address)}</button>`:''}${p.note?`<div class="place-note">${escapeHtml(p.note)}</div>`:''}${p.link?`<a class="place-link" href="${escapeHtml(p.link)}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()">🔗 Link</a>`:''}${p.want?'<span class="badge">❤️ Muốn đi</span>':''}<div class="place-rating-row">${ratingBadge(p)}</div><div class="card-actions"><button type="button" class="secondary show-place" data-id="${p.id}">📍 Xem trên bản đồ</button><button type="button" class="secondary open-map" data-lat="${p.lat}" data-lng="${p.lng}">🧭 Chỉ đường</button><button type="button" class="secondary edit-place" data-id="${p.id}">✏️ Chỉnh sửa</button><button type="button" class="secondary delete-place" data-id="${p.id}">Xóa</button></div>`;els.placeList.appendChild(card)});const showPlaceOnMap=id=>{
   const p=places.find(x=>x.id===id);
