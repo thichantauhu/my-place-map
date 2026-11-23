@@ -300,6 +300,7 @@ async function reverseAddressFromCoords(lat,lng) {
 let mapsBrowserPromise=null;
 async function getMapsBrowser() {
   if(!mapsBrowserPromise) {
+    process.env.PLAYWRIGHT_BROWSERS_PATH='0';
     mapsBrowserPromise=require('playwright').chromium.launch({
       headless:true,
       args:['--no-sandbox','--disable-dev-shm-usage','--disable-gpu','--no-zygote','--single-process']
