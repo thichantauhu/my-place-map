@@ -365,10 +365,16 @@ async function readMapsRenderedPage(link) {
 async function googleMapsPlace(res,url) {
   const raw=(url.searchParams.get('url')||'').trim();
   if(!raw||raw.length>2048)return send(res,400,{error:'INVALID_MAPS_URL',message:'Link Google Maps không hợp lệ.'});
+  let current;
   try{
-    let current=new URL(raw);
+    current=new URL(raw);
     if(!allowedMapsHost(current.hostname.toLowerCase()))return send(res,400,{error:'UNSUPPORTED_URL',message:'Chỉ hỗ trợ link Google Maps.'});
-    let html='';
+  }catch(_){return send(res,400,{error:'INVALID_MAPS_URL',message:'Link Google Maps không hợp lệ.'})}
+  // /maps/place/Name/data=!4m2!3m1!1s0x0:0x... is a valid place link
+  // even though it contains a feature ID instead of latitude/longitude.
+  const pathName=cleanMapsText(nameFromMapsUrl(current.href));
+  let html='',fetchError=null;
+  try{
     for(let i=0;i<4;i++){
       if(!allowedMapsHost(current.hostname.toLowerCase()))throw new Error('REDIRECT_HOST_NOT_ALLOWED');
       const response=await fetch(current,{signal:AbortSignal.timeout(2200),redirect:'manual',headers:{'User-Agent':'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124 Safari/537.36','Accept-Language':'vi-VN,vi;q=0.9,en;q=0.8','Accept':'text/html,application/xhtml+xml'}});
@@ -376,16 +382,15 @@ async function googleMapsPlace(res,url) {
       if(location){current=new URL(location,current);continue}
       html=await response.text().catch(()=>'');break;
     }
-    const coords=extractMapsCoords(current.href)||extractMapsCoords(html);
-    let name=cleanMapsText(htmlMeta(html,'og:title'));
-    if(isGenericMapsText(name))name=cleanMapsText(nameFromMapsUrl(current.href));
-    // HTML metadata is not a trustworthy source for the exact address or weekly hours.
-    // Avoid launching a resource-heavy headless browser on Render Free.
-    const result={name,address:'',openingHours:'',closingHours:'',weeklyHours:[]};
-    if(coords)Object.assign(result,coords);
-    if(!name&&!result.address&&!coords)return send(res,422,{error:'MAPS_INFO_NOT_FOUND',message:'Google Maps không cung cấp đủ thông tin cho link này. M có thể nhập thủ công.'});
-    return send(res,200,result);
-  }catch(error){console.error('Google Maps place error:',error);return send(res,422,{error:'MAPS_LINK_ERROR',message:'Không thể đọc link Google Maps này.'})}
+  }catch(error){fetchError=error;console.warn('Maps metadata unavailable:',error.message)}
+  const coords=extractMapsCoords(current.href)||extractMapsCoords(html);
+  let name=cleanMapsText(htmlMeta(html,'og:title'));
+  if(isGenericMapsText(name))name=cleanMapsText(nameFromMapsUrl(current.href))||pathName;
+  if(!name&&!coords)return send(res,422,{error:'MAPS_INFO_NOT_FOUND',message:'Không tìm thấy tên hoặc tọa độ từ link Google Maps.'});
+  const result={name,address:'',openingHours:'',closingHours:'',weeklyHours:[],partial:!coords,source:'google-maps-link'};
+  if(coords)Object.assign(result,coords);
+  if(fetchError)result.partial=true;
+  return send(res,200,result);
 }
 async function handleApi(req, res, url) {
   const placesHandled = await handlePlaces(req, res, url);
