@@ -248,18 +248,30 @@ function nameFromMapsUrl(value) {
   } catch (_) { return ''; }
 }
 function extractDailyHours(html) {
-  const source=decodeHtml(String(html||'').replace(/\\\\u003c/gi,'<').replace(/\\\\u003e/gi,'>').replace(/\\\\u0026/gi,'&').replace(/\\\\n/g,' '));
-  const ranges=[...source.matchAll(/(\\d{1,2}:\\d{2})\\s*(?:–|—|−|-)\\s*(\\d{1,2}:\\d{2})/g)].map(m=>({open:m[1].padStart(5,'0'),close:m[2].padStart(5,'0')}));
-  if(!ranges.length)return {openingHours:'',closingHours:''};
+  // Google Maps serializes weekly hours in its page data; normalize escaped JSON/HTML first.
+  const source=decodeHtml(String(html||'')
+    .replace(/\\u003c/gi,'<').replace(/\\u003e/gi,'>').replace(/\\u0026/gi,'&')
+    .replace(/\\u003d/gi,'=').replace(/\\u0022/gi,'"').replace(/\\n/g,' '));
+  const matches=[...source.matchAll(/(\d{1,2}:\d{2})\s*(?:–|—|−|-|to)\s*(\d{1,2}:\d{2})/gi)];
   const valid=t=>{const [h,m]=t.split(':').map(Number);return h<24&&m<60};
-  const opens=ranges.map(x=>x.open).filter(valid).sort(), closes=ranges.map(x=>x.close).filter(valid).sort();
+  const opens=matches.map(m=>m[1].padStart(5,'0')).filter(valid).sort();
+  const closes=matches.map(m=>m[2].padStart(5,'0')).filter(valid).sort();
   return {openingHours:opens[0]||'',closingHours:closes[closes.length-1]||''};
 }
 function extractAddressFromHtml(html) {
-  const source=decodeHtml(String(html||'').replace(/\\\\u003c/gi,'<').replace(/\\\\u0026/gi,'&'));
+  const source=decodeHtml(String(html||'')
+    .replace(/\\u003c/gi,'<').replace(/\\u003e/gi,'>').replace(/\\u0026/gi,'&')
+    .replace(/\\u0022/gi,'"').replace(/\\u003d/gi,'='));
   const candidates=[];
-  const re=/(\\d{1,5}\\s+[^,<>"]{3,80},\\s*(?:Phường|Xã|Tân Hòa|Tân Bình|Quận|Thành phố)[^"<>]{3,100})/gi;
-  for(const m of source.matchAll(re)){const v=m[1].replace(/\\s+/g,' ').trim();if(!/google maps|directions/i.test(v))candidates.push(v)}
+  // Google page data often contains the complete formatted address as one quoted string.
+  const patterns=[
+    /(?:\\d{1,5}\\s+[^,"<>]{2,90},\\s*[^,"<>]{2,100},\\s*[^,"<>]{2,100}(?:Việt Nam|Vietnam))/gi,
+    /(?:\\d{1,5}\\s+[^,"<>]{2,90},\\s*(?:Phường|Xã|Tân Hòa|Tân Bình|Quận|Thành phố)[^,"<>]{2,120})/gi
+  ];
+  for(const re of patterns) for(const m of source.matchAll(re)) {
+    const value=m[0].replace(/\\s+/g,' ').trim();
+    if(/\\d/.test(value)&&/,/.test(value)&&!/google maps|directions|find local businesses/i.test(value)) candidates.push(value);
+  }
   return candidates.sort((a,b)=>a.length-b.length)[0]||'';
 }
 async function reverseAddressFromCoords(lat,lng) {
