@@ -159,39 +159,34 @@ async function handlePlaces(req, res, url) {
 }
 
 async function valhallaMatrix(payload) {
-  const requestPayload = {
-    ...payload,
-    costing: 'motor_scooter',
-    units: 'kilometers',
-    verbose: true
-  };
-  const response = await fetch('https://valhalla1.openstreetmap.de/sources_to_targets', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Accept: 'application/json',
-      'User-Agent': 'my-place-map/1.0',
-      'X-Client-Id': 'my-place-map.onrender.com'
-    },
-    body: JSON.stringify(requestPayload)
-  });
-  const data = await response.json().catch(() => ({}));
-  if (response.ok) return data;
-
-  // Valhalla rejects a matrix when any route exceeds its 100 km path limit.
-  // Split targets recursively so one far-away place cannot invalidate
-  // all nearby distances.
-  if (data?.error_code === 154 && requestPayload.targets.length > 1) {
-    const mid = Math.ceil(requestPayload.targets.length / 2);
-    const left = await valhallaMatrix({...requestPayload, targets: requestPayload.targets.slice(0, mid)});
-    const right = await valhallaMatrix({...requestPayload, targets: requestPayload.targets.slice(mid)});
-    const leftRows = left?.sources_to_targets?.[0] || [];
-    const rightRows = right?.sources_to_targets?.[0] || [];
-    return {sources_to_targets: [[...leftRows, ...rightRows]]};
+  const requestPayload={...payload,costing:'motor_scooter',units:'kilometers',verbose:true};
+  let errorDetail='';
+  try{
+    const response=await fetch('https://valhalla1.openstreetmap.de/sources_to_targets',{
+      method:'POST',
+      headers:{'Content-Type':'application/json',Accept:'application/json','User-Agent':'my-place-map/1.0','X-Client-Id':'my-place-map.onrender.com'},
+      body:JSON.stringify(requestPayload),
+      signal:AbortSignal.timeout(12000)
+    });
+    const data=await response.json().catch(()=>({}));
+    const rows=data?.sources_to_targets?.[0];
+    if(response.ok&&Array.isArray(rows)&&rows.length===requestPayload.targets.length)return data;
+    errorDetail=JSON.stringify({status:response.status,error:data?.error_code||data?.error||'invalid matrix'});
+  }catch(error){errorDetail=error.message}
+  // A failed batch must not hide valid routes for other places.
+  if(requestPayload.targets.length>1){
+    const mid=Math.ceil(requestPayload.targets.length/2);
+    const [left,right]=await Promise.all([
+      valhallaMatrix({...requestPayload,targets:requestPayload.targets.slice(0,mid)}),
+      valhallaMatrix({...requestPayload,targets:requestPayload.targets.slice(mid)})
+    ]);
+    return {sources_to_targets:[[
+      ...(left?.sources_to_targets?.[0]||[]),
+      ...(right?.sources_to_targets?.[0]||[])
+    ]]};
   }
-
-  console.error('Valhalla routing error:', response.status, data);
-  return {sources_to_targets: [[]], routing_errors: [data]};
+  console.warn('Motorbike route unavailable:',errorDetail);
+  return {sources_to_targets:[[null]]};
 }
 
 async function roadDistance(req, res, url) {
