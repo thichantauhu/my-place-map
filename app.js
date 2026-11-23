@@ -151,15 +151,29 @@ function fillHours(opening='',closing=''){
   els.closingHours.value=hours.close;
 }
 function autoFormatHourInput(input){
+  input.addEventListener('keydown',event=>{
+    if(event.key==='Backspace'&&input.selectionStart===3&&input.selectionEnd===3&&input.value[2]===':'){
+      event.preventDefault();
+      input.value=input.value.slice(0,1)+input.value.slice(3);
+      input.setSelectionRange(1,1);
+    }
+  });
   input.addEventListener('input',()=>{
     const old=input.value;
+    const cursor=input.selectionStart??old.length;
+    const digitsBefore=old.slice(0,cursor).replace(/\D/g,'').length;
     const digits=old.replace(/\D/g,'').slice(0,4);
-    const next=digits.length>2?digits.slice(0,2)+':'+digits.slice(2):digits;
-    if(old!==next)input.value=next;
+    const next=digits.length>=2?digits.slice(0,2)+':'+digits.slice(2):digits;
+    if(old!==next){
+      input.value=next;
+      const pos=digitsBefore>=2?digitsBefore+1:digitsBefore;
+      input.setSelectionRange(pos,pos);
+    }
   });
   input.addEventListener('blur',()=>{
     const digits=input.value.replace(/\D/g,'');
     if(digits.length===3)input.value='0'+digits[0]+':'+digits.slice(1);
+    else if(digits.length===2)input.value=digits+':00';
     else if(digits.length===4)input.value=digits.slice(0,2)+':'+digits.slice(2);
   });
 }
