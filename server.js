@@ -248,14 +248,35 @@ function nameFromMapsUrl(value) {
   } catch (_) { return ''; }
 }
 function extractDailyHours(html) {
-  // Google Maps serializes weekly hours in its page data; normalize escaped JSON/HTML first.
+  // Read weekly schedule rows from the Google Maps page payload, including Sunday.
   const source=decodeHtml(String(html||'')
     .replace(/\\u003c/gi,'<').replace(/\\u003e/gi,'>').replace(/\\u0026/gi,'&')
-    .replace(/\\u003d/gi,'=').replace(/\\u0022/gi,'"').replace(/\\n/g,' '));
-  const matches=[...source.matchAll(/(\d{1,2}:\d{2})\s*(?:–|—|−|-|to)\s*(\d{1,2}:\d{2})/gi)];
+    .replace(/\\u003d/gi,'=').replace(/\\u0022/gi,'"')
+    .replace(/\\u005b/gi,'[').replace(/\\u005d/gi,']')
+    .replace(/\\n|\\\\n/g,' ').replace(/\\t|\\\\t/g,' '));
+  const dayPattern=/(?:Thứ\\s*[一二三四五六七]|Thứ\\s*(?:Hai|Ba|Tư|Năm|Sáu|Bảy)|Chủ\\s*Nhật|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)/gi;
+  const days=[...source.matchAll(dayPattern)];
   const valid=t=>{const [h,m]=t.split(':').map(Number);return h<24&&m<60};
-  const opens=matches.map(m=>m[1].padStart(5,'0')).filter(valid).sort();
-  const closes=matches.map(m=>m[2].padStart(5,'0')).filter(valid).sort();
+  const parseRange=text=> {
+    const m=text.match(/(\\d{1,2}:\\d{2})\\s*(?:–|—|−|-|to)\\s*(\\d{1,2}:\\d{2})/i);
+    if(!m)return null;
+    const open=m[1].padStart(5,'0'),close=m[2].padStart(5,'0');
+    return valid(open)&&valid(close)?{open,close}:null;
+  };
+  const weekly=[];
+  for(let i=0;i<days.length;i++){
+    const from=days[i].index+days[i][0].length;
+    const to=i+1<days.length?days[i+1].index:Math.min(source.length,from+260);
+    const row=source.slice(from,Math.min(to,from+260));
+    const range=parseRange(row);
+    if(range)weekly.push(range);
+  }
+  // Fallback to the page's serialized opening-hours ranges when weekday labels
+  // are encoded separately from their visible labels in Google's internal payload.
+  const ranges=weekly.length?weekly:[...source.matchAll(/(\\d{1,2}:\\d{2})\\s*(?:–|—|−|-|to)\\s*(\\d{1,2}:\\d{2})/gi)]
+    .map(m=>({open:m[1].padStart(5,'0'),close:m[2].padStart(5,'0')}))
+    .filter(x=>valid(x.open)&&valid(x.close));
+  const opens=ranges.map(x=>x.open).sort(), closes=ranges.map(x=>x.close).sort();
   return {openingHours:opens[0]||'',closingHours:closes[closes.length-1]||''};
 }
 function extractAddressFromHtml(html) {
