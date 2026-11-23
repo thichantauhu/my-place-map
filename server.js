@@ -247,53 +247,41 @@ function nameFromMapsUrl(value) {
     return decodeURIComponent(match[1].replace(/\+/g,' ')).trim();
   } catch (_) { return ''; }
 }
+function normalizeMapsPayload(html) {
+  return decodeHtml(String(html||'')
+    .replace(/\\u([0-9a-f]{4})/gi,(_,hex)=>String.fromCharCode(parseInt(hex,16)))
+    .replace(/\\x([0-9a-f]{2})/gi,(_,hex)=>String.fromCharCode(parseInt(hex,16)))
+    .replace(/\\n|\\t|\\r/g,' ')
+    .replace(/\\\//g,'/'));
+}
 function extractDailyHours(html) {
-  // Read weekly schedule rows from the Google Maps page payload, including Sunday.
-  const source=decodeHtml(String(html||'')
-    .replace(/\\u003c/gi,'<').replace(/\\u003e/gi,'>').replace(/\\u0026/gi,'&')
-    .replace(/\\u003d/gi,'=').replace(/\\u0022/gi,'"')
-    .replace(/\\u005b/gi,'[').replace(/\\u005d/gi,']')
-    .replace(/\\n|\\\\n/g,' ').replace(/\\t|\\\\t/g,' '));
-  const dayPattern=/(?:Thứ\\s*[一二三四五六七]|Thứ\\s*(?:Hai|Ba|Tư|Năm|Sáu|Bảy)|Chủ\\s*Nhật|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)/gi;
-  const days=[...source.matchAll(dayPattern)];
-  const valid=t=>{const [h,m]=t.split(':').map(Number);return h<24&&m<60};
-  const parseRange=text=> {
-    const m=text.match(/(\\d{1,2}:\\d{2})\\s*(?:–|—|−|-|to)\\s*(\\d{1,2}:\\d{2})/i);
-    if(!m)return null;
+  const source=normalizeMapsPayload(html);
+  const days='(?:Thứ\\s*(?:Hai|Ba|Tư|Năm|Sáu|Bảy|2|3|4|5|6|7)|Chủ\\s*Nhật|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)';
+  const times='(\\d{1,2}:\\d{2})\\s*(?:–|—|−|-)\\s*(\\d{1,2}:\\d{2})';
+  const matches=[];
+  const re=new RegExp(days+'[^\\r\\n]{0,140}?'+times,'gi');
+  for(const m of source.matchAll(re)) {
     const open=m[1].padStart(5,'0'),close=m[2].padStart(5,'0');
-    return valid(open)&&valid(close)?{open,close}:null;
-  };
-  const weekly=[];
-  for(let i=0;i<days.length;i++){
-    const from=days[i].index+days[i][0].length;
-    const to=i+1<days.length?days[i+1].index:Math.min(source.length,from+260);
-    const row=source.slice(from,Math.min(to,from+260));
-    const range=parseRange(row);
-    if(range)weekly.push(range);
+    const valid=t=>{const [h,min]=t.split(':').map(Number);return h<24&&min<60};
+    if(valid(open)&&valid(close))matches.push({open,close});
   }
-  // Fallback to the page's serialized opening-hours ranges when weekday labels
-  // are encoded separately from their visible labels in Google's internal payload.
-  const ranges=weekly.length?weekly:[...source.matchAll(/(\\d{1,2}:\\d{2})\\s*(?:–|—|−|-|to)\\s*(\\d{1,2}:\\d{2})/gi)]
-    .map(m=>({open:m[1].padStart(5,'0'),close:m[2].padStart(5,'0')}))
-    .filter(x=>valid(x.open)&&valid(x.close));
-  const opens=ranges.map(x=>x.open).sort(), closes=ranges.map(x=>x.close).sort();
-  return {openingHours:opens[0]||'',closingHours:closes[closes.length-1]||''};
+  // Never use unrelated time ranges on the page (e.g. menus or advertisements).
+  if(!matches.length)return {openingHours:'',closingHours:''};
+  const opens=matches.map(x=>x.open).sort(),closes=matches.map(x=>x.close).sort();
+  return {openingHours:opens[0],closingHours:closes[closes.length-1]};
 }
 function extractAddressFromHtml(html) {
-  const source=decodeHtml(String(html||'')
-    .replace(/\\u003c/gi,'<').replace(/\\u003e/gi,'>').replace(/\\u0026/gi,'&')
-    .replace(/\\u0022/gi,'"').replace(/\\u003d/gi,'='));
-  const candidates=[];
-  // Google page data often contains the complete formatted address as one quoted string.
+  const source=normalizeMapsPayload(html);
+  const matches=[];
   const patterns=[
-    /(?:\\d{1,5}\\s+[^,"<>]{2,90},\\s*[^,"<>]{2,100},\\s*[^,"<>]{2,100}(?:Việt Nam|Vietnam))/gi,
-    /(?:\\d{1,5}\\s+[^,"<>]{2,90},\\s*(?:Phường|Xã|Tân Hòa|Tân Bình|Quận|Thành phố)[^,"<>]{2,120})/gi
+    /\b\d{1,5}\s+[^,\[\]<>"]{3,75},\s*[^,\[\]<>"]{2,65},\s*[^,\[\]<>"]{2,70}(?:,\s*(?:Việt Nam|Vietnam))?/gi,
+    /\b\d{1,5}\s+[^,\[\]<>"]{3,75},\s*(?:Phường|Xã|Quận|Tân Hòa|Tân Bình)[^"\[\]<>]{3,100}/gi
   ];
-  for(const re of patterns) for(const m of source.matchAll(re)) {
-    const value=m[0].replace(/\\s+/g,' ').trim();
-    if(/\\d/.test(value)&&/,/.test(value)&&!/google maps|directions|find local businesses/i.test(value)) candidates.push(value);
+  for(const pattern of patterns)for(const m of source.matchAll(pattern)) {
+    const v=m[0].replace(/\s+/g,' ').trim();
+    if(!/google maps|find local businesses|driving directions|javascript|function/i.test(v)&&v.length<180)matches.push(v);
   }
-  return candidates.sort((a,b)=>a.length-b.length)[0]||'';
+  return matches.sort((a,b)=>b.length-a.length)[0]||'';
 }
 async function reverseAddressFromCoords(lat,lng) {
   if(GOGODUK_API_KEY) {
@@ -326,7 +314,7 @@ async function googleMapsPlace(res,url) {
     let name=cleanMapsText(htmlMeta(html,'og:title'));
     if(isGenericMapsText(name))name=cleanMapsText(nameFromMapsUrl(current.href));
     let address=cleanMapsText(htmlMeta(html,'og:description'));
-    if(isGenericMapsText(address))address='';
+    if(isGenericMapsText(address) || /find local businesses|driving directions/i.test(address))address='';
     if(!address)address=extractAddressFromHtml(html);
     if(!address&&coords)address=await reverseAddressFromCoords(coords.lat,coords.lng);
     const hours=extractDailyHours(html);
