@@ -256,7 +256,7 @@ function normalizeMapsPayload(html) {
 }
 function extractDailyHours(html) {
   const source=normalizeMapsPayload(html);
-  const days='(?:Thứ\\s*(?:Hai|Ba|Tư|Năm|Sáu|Bảy|2|3|4|5|6|7)|Chủ\\s*Nhật|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)';
+  const days='(?:Thứ\s*(?:Hai|Ba|Tư|Năm|Sáu|Bảy|2|3|4|5|6|7)|Chủ\s*Nhật|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)';
   const times='(\\d{1,2}:\\d{2})\\s*(?:–|—|−|-)\\s*(\\d{1,2}:\\d{2})';
   const matches=[];
   const re=new RegExp(days+'[^\\r\\n]{0,140}?'+times,'gi');
@@ -279,7 +279,7 @@ function extractAddressFromHtml(html) {
   ];
   for(const pattern of patterns)for(const m of source.matchAll(pattern)) {
     const v=m[0].replace(/\s+/g,' ').trim();
-    if(!/google maps|find local businesses|driving directions|javascript|function/i.test(v)&&v.length<180)matches.push(v);
+    if(!/google maps|find local businesses|driving directions|javascript|function|google sans|roboto|helvetica|font|px\\/|css/i.test(v)&&v.length<180&&/[,，]/.test(v))matches.push(v);
   }
   return matches.sort((a,b)=>b.length-a.length)[0]||'';
 }
@@ -359,7 +359,7 @@ async function readMapsRenderedPage(link) {
         }
       }
       const periods=rows.map(t=>t.match(time)).filter(Boolean).map(m=>({open:m[1].padStart(5,'0'),close:m[2].padStart(5,'0')}));
-      const labels=[/^(?:Thứ\\s*(?:Hai|2)|Monday)/i,/^(?:Thứ\\s*(?:Ba|3)|Tuesday)/i,/^(?:Thứ\\s*(?:Tư|4)|Wednesday)/i,/^(?:Thứ\\s*(?:Năm|5)|Thursday)/i,/^(?:Thứ\\s*(?:Sáu|6)|Friday)/i,/^(?:Thứ\\s*(?:Bảy|7)|Saturday)/i,/^(?:Chủ\\s*Nhật|Sunday)/i];
+      const labels=[/^(?:Thứ\s*(?:Hai|2)|Monday)/i,/^(?:Thứ\s*(?:Ba|3)|Tuesday)/i,/^(?:Thứ\s*(?:Tư|4)|Wednesday)/i,/^(?:Thứ\s*(?:Năm|5)|Thursday)/i,/^(?:Thứ\s*(?:Sáu|6)|Friday)/i,/^(?:Thứ\s*(?:Bảy|7)|Saturday)/i,/^(?:Chủ\s*Nhật|Sunday)/i];
       const weeklyHours=labels.map(re=>{const row=rows.find(x=>re.test(x));const m=row?.match(time);return {open:m?m[1].padStart(5,'0'):'',close:m?m[2].padStart(5,'0'):''}});
       return {openingHours:periods.length?periods.map(x=>x.open).sort()[0]:'',closingHours:periods.length?periods.map(x=>x.close).sort().at(-1):'',weeklyHours,daysFound:periods.length};
     });
@@ -386,13 +386,15 @@ async function googleMapsPlace(res,url) {
     let address=cleanMapsText(htmlMeta(html,'og:description'));
     if(isGenericMapsText(address) || /find local businesses|driving directions/i.test(address))address='';
     if(!address)address=extractAddressFromHtml(html);
+    if(/google sans|roboto|helvetica|font|\\d+px\\//i.test(address))address='';
     // Do not substitute a nearby street address for the exact Google Maps business address.
     let hours=extractDailyHours(html);
     try {
       const rendered=await Promise.race([readMapsRenderedPage(current.href),new Promise((_,reject)=>setTimeout(()=>reject(new Error('BROWSER_TIMEOUT')),14000))]);
       if(rendered.name && !isGenericMapsText(rendered.name))name=rendered.name;
-      if(rendered.address)address=rendered.address;
-      if(rendered.openingHours&&rendered.closingHours)hours=rendered;
+      if(rendered.address&&!/google sans|roboto|helvetica|font|\\d+px\\//i.test(rendered.address))address=rendered.address;
+      if(rendered.weeklyHours?.some(x=>x.open||x.close))hours=rendered;
+      console.info('Google Maps extraction:',JSON.stringify({addressFound:!!rendered.address,daysFound:rendered.daysFound,finalUrl:rendered.finalUrl}));
     } catch(error) { console.warn('Google Maps browser extraction unavailable:',error.message); }
     const result={name,address,openingHours:hours.openingHours,closingHours:hours.closingHours,weeklyHours:hours.weeklyHours||[]};
     if(coords)Object.assign(result,coords);
