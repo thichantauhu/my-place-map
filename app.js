@@ -135,18 +135,21 @@ function renderSearchResult(title,onClick){const b=document.createElement('butto
 async function searchAddress(){const q=els.address.value.trim();els.error.textContent='';els.addressResults.innerHTML='';if(!q){els.error.textContent='Hãy nhập địa chỉ cần tìm.';return}els.searchAddress.disabled=true;els.searchAddress.textContent='⌛ Đang tìm...';try{let results=[];try{results=await nominatimSearch(q)}catch(_){}if(!results.length){try{results=await arcgisSearch(q)}catch(_){}}if(!results.length){els.addressResults.innerHTML='<div class="address-no-result">Không tìm thấy địa chỉ. Hãy thử viết ngắn hơn hoặc dán tọa độ Google Maps.</div>';return}results.forEach(r=>{const lat=Number(r.lat),lng=Number(r.lon);renderSearchResult(r.display_name,()=>{els.address.value=r.display_name;syncCoords(lat,lng);els.addressResults.innerHTML='';map.setView([lat,lng],18,{animate:true});els.mapHint.textContent='📍 Đã chọn kết quả tìm kiếm. Nếu cần đúng vị trí số nhà, dán tọa độ Google Maps.'})})}catch(_){els.error.textContent='Không thể tìm địa chỉ lúc này. M vẫn có thể dán tọa độ Google Maps.'}finally{els.searchAddress.disabled=false;els.searchAddress.textContent='🔎 Tìm địa chỉ'}}
 async function reverseGeocode(lat,lng,fill=false){try{const u=new URL(`${GEOCODER}/reverse`);u.searchParams.set('format','jsonv2');u.searchParams.set('lat',lat);u.searchParams.set('lon',lng);u.searchParams.set('zoom','18');u.searchParams.set('addressdetails','1');const r=await fetch(u,{headers:{Accept:'application/json'}});const d=await r.json();if(fill&&d.display_name)els.address.value=d.display_name;return d.display_name||''}catch(_){return''}}
 
-const WEEK_DAYS=['T2','T3','T4','T5','T6','T7','CN'];
-function readWeeklyHours(){
-  return WEEK_DAYS.map((_,i)=>({open:document.getElementById('openDay'+i).value,close:document.getElementById('closeDay'+i).value}));
+function legacyHours(opening,closing){
+  try{
+    const days=JSON.parse(opening);
+    if(Array.isArray(days)){
+      const first=days.find(x=>x&&(/^\d{2}:\d{2}$/.test(x.open||'')||/^\d{2}:\d{2}$/.test(x.close||'')));
+      return {open:first?.open||'',close:first?.close||''};
+    }
+  }catch(_){}
+  return {open:/^\d{2}:\d{2}$/.test(opening||'')?opening:'',close:/^\d{2}:\d{2}$/.test(closing||'')?closing:''};
 }
-function fillWeeklyHours(days){
-  WEEK_DAYS.forEach((_,i)=>{document.getElementById('openDay'+i).value=days?.[i]?.open||'';document.getElementById('closeDay'+i).value=days?.[i]?.close||''});
+function fillHours(opening='',closing=''){
+  const hours=legacyHours(opening,closing);
+  els.openingHours.value=hours.open;
+  els.closingHours.value=hours.close;
 }
-function savedWeeklyHours(opening,closing){
-  try{const parsed=JSON.parse(opening);if(Array.isArray(parsed)&&parsed.length===7)return parsed}catch(_){}
-  return WEEK_DAYS.map(()=>({open:/^\d\d:\d\d$/.test(opening||'')?opening:'',close:/^\d\d:\d\d$/.test(closing||'')?closing:''}));
-}
-function serializeWeeklyHours(){return JSON.stringify(readWeeklyHours())}
 function updateGoogleMapsLink(){
   const raw=els.googleMapsUrl.value.trim();
   let valid=false;
@@ -161,17 +164,17 @@ async function getGoogleMapsInfo(){
   if(!raw){els.mapsInfoStatus.textContent='Hãy dán link Google Maps trước.';return}
   els.getMapsInfo.disabled=true;els.getMapsInfo.textContent='⌛ Đang lấy thông tin...';
   try{
-    const response=await fetch('/api/google-maps-place?url='+encodeURIComponent(raw),{headers:{Accept:'application/json'},signal:AbortSignal.timeout(23000)});
+    const response=await fetch('/api/google-maps-place?url='+encodeURIComponent(raw),{headers:{Accept:'application/json'},signal:AbortSignal.timeout(11000)});
     const data=await response.json().catch(()=>({}));
     if(!response.ok)throw new Error(data.message||'Không đọc được link này.');
     if(data.name)els.name.value=data.name;
-    if(data.source==='OpenStreetMap'&&data.address)els.address.value=data.address;
-    if(validCoord(Number(data.lat),Number(data.lng)))syncCoords(Number(data.lat),Number(data.lng));
-    if(data.source==='OpenStreetMap'&&Array.isArray(data.weeklyHours)&&data.weeklyHours.some(x=>x.open||x.close))fillWeeklyHours(data.weeklyHours);
 
-    const found=[data.name&&'tên',validCoord(Number(data.lat),Number(data.lng))&&'tọa độ',data.source==='OpenStreetMap'&&data.address&&'địa chỉ OSM',data.source==='OpenStreetMap'&&data.weeklyHours?.some(x=>x.open||x.close)&&'giờ T2–CN từ OSM'].filter(Boolean);
-    els.mapsInfoStatus.textContent=found.length?'✓ Đã lấy: '+found.join(', ')+'. '+(data.source==='OpenStreetMap'?'Dữ liệu OSM có thể thiếu hoặc khác Google Maps, m kiểm tra lại nhé.':'OSM không có dữ liệu khớp; m có thể mở Google Maps để bổ sung địa chỉ và giờ.'):'Không tìm thấy thông tin tự động.';
-  }catch(error){els.mapsInfoStatus.textContent=error.name==='TimeoutError'||error.name==='AbortError'?'Google Maps phản hồi quá lâu (trên 23 giây). M thử lại sau hoặc nhập thủ công.':(error.message||'Không thể lấy thông tin từ link này. M thử link Chia sẻ Google Maps.')}
+    if(validCoord(Number(data.lat),Number(data.lng)))syncCoords(Number(data.lat),Number(data.lng));
+
+
+    const found=[data.name&&'tên',validCoord(Number(data.lat),Number(data.lng))&&'tọa độ'].filter(Boolean);
+    els.mapsInfoStatus.textContent=found.length?'✓ Đã lấy: '+found.join(', ')+'. Địa chỉ và giờ hoạt động có thể nhập thủ công.':'Không tìm thấy thông tin tự động.';
+  }catch(error){els.mapsInfoStatus.textContent=error.name==='TimeoutError'||error.name==='AbortError'?'Google Maps phản hồi quá lâu (trên 11 giây). M thử lại sau hoặc nhập thủ công.':(error.message||'Không thể lấy thông tin từ link này. M thử link Chia sẻ Google Maps.')}
   finally{els.getMapsInfo.disabled=false;els.getMapsInfo.textContent='✨ Lấy tên & tọa độ'}
 }
 
@@ -185,7 +188,7 @@ function openEditDialog(id){
   els.address.value=p.address;
   els.note.value=p.note;
   els.link.value=p.link||'';
-  els.googleMapsUrl.value='';updateGoogleMapsLink();els.mapsInfoStatus.textContent='';fillWeeklyHours(savedWeeklyHours(p.openingHours,p.closingHours));
+  els.googleMapsUrl.value='';updateGoogleMapsLink();els.mapsInfoStatus.textContent='';fillHours(p.openingHours,p.closingHours);
   els.coord.value='';
   els.lat.value='';
   els.lng.value='';
@@ -201,7 +204,7 @@ function openEditDialog(id){
 function openAddDialog(lat=null,lng=null){
   editingPlaceId=null;
   els.dialog.querySelector('h3').textContent='Thêm địa điểm';
-  if(els.saveBtn) els.saveBtn.textContent='Lưu địa điểm';els.error.textContent='';els.addressResults.innerHTML='';els.name.value='';els.address.value='';els.note.value='';els.link.value='';els.googleMapsUrl.value='';els.mapsInfoStatus.textContent='';fillWeeklyHours([]);els.coord.value='';els.lat.value='';els.lng.value='';els.selectedLocation.textContent='Chưa chọn vị trí chính xác';els.want.checked=false;els.category.value='food';if(validCoord(lat,lng))syncCoords(lat,lng);els.dialog.showModal();setTimeout(()=>els.name.focus(),50)}
+  if(els.saveBtn) els.saveBtn.textContent='Lưu địa điểm';els.error.textContent='';els.addressResults.innerHTML='';els.name.value='';els.address.value='';els.note.value='';els.link.value='';els.googleMapsUrl.value='';els.mapsInfoStatus.textContent='';fillHours();els.coord.value='';els.lat.value='';els.lng.value='';els.selectedLocation.textContent='Chưa chọn vị trí chính xác';els.want.checked=false;els.category.value='food';if(validCoord(lat,lng))syncCoords(lat,lng);els.dialog.showModal();setTimeout(()=>els.name.focus(),50)}
 function closePlaceDialog(){if(els.dialog.open)els.dialog.close();els.error.textContent='';els.addressResults.innerHTML=''}
 function setPickerPosition(lat,lng){if(!validCoord(lat,lng))return;pickerPosition={lat,lng};if(pickerMarker)pickerMarker.setLatLng([lat,lng]);else{pickerMarker=L.marker([lat,lng],{draggable:true}).addTo(pickerMap);pickerMarker.on('dragend',()=>{const p=pickerMarker.getLatLng();setPickerPosition(p.lat,p.lng)})}els.pickerCoords.textContent=`📍 ${lat.toFixed(6)}, ${lng.toFixed(6)}`}
 function openPicker(){const c=readCoords(),center=c||(map?map.getCenter():{lat:10.7769,lng:106.7009});els.dialog.close();els.pickerOverlay.hidden=false;if(!pickerMap){pickerMap=L.map('pickerMap',{zoomControl:true,doubleClickZoom:false}).setView([center.lat,center.lng],18);L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:20,attribution:'&copy; OpenStreetMap contributors'}).addTo(pickerMap);pickerMap.on('click',e=>setPickerPosition(e.latlng.lat,e.latlng.lng))}setTimeout(()=>{pickerMap.invalidateSize();pickerMap.setView([center.lat,center.lng],18);setPickerPosition(center.lat,center.lng)},100)}
@@ -228,8 +231,8 @@ async function savePlace(e){
         category:els.category.value,
         note:els.note.value.trim(),
         link:els.link.value.trim(),
-        openingHours:serializeWeeklyHours(),
-        closingHours:'',
+        openingHours:els.openingHours.value,
+        closingHours:els.closingHours.value,
         lat:c.lat,
         lng:c.lng,
         want:els.want.checked
@@ -259,7 +262,7 @@ async function savePlace(e){
       if(currentLocation)updateRoadDistances();
       els.mapHint.textContent='✏️ Đã cập nhật toàn bộ thông tin địa điểm.';
     }else{
-      const place=normalizePlace({id:window.crypto?.randomUUID?.()||`${Date.now()}-${Math.random()}`,name,address,category:els.category.value,note:els.note.value.trim(),link:els.link.value.trim(),openingHours:serializeWeeklyHours(),closingHours:'',lat:c.lat,lng:c.lng,want:els.want.checked,rating:null,createdAt:Date.now()});
+      const place=normalizePlace({id:window.crypto?.randomUUID?.()||`${Date.now()}-${Math.random()}`,name,address,category:els.category.value,note:els.note.value.trim(),link:els.link.value.trim(),openingHours:els.openingHours.value,closingHours:els.closingHours.value,lat:c.lat,lng:c.lng,want:els.want.checked,rating:null,createdAt:Date.now()});
       await api('/api/places',{method:'POST',body:JSON.stringify(place)});
       places.push(place);
       els.radius.value='999';
